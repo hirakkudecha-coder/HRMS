@@ -1,0 +1,59 @@
+/* Import beautiful modern Google Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-brand-dark text-slate-100 font-sans antialiased overflow-x-hidden;
+    background-image: 
+      radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+      radial-gradient(at 100% 100%, rgba(139, 92, 246, 0.1) 0px, transparent 50%);
+    background-attachment: fixed;
+  }
+}
+
+/* Custom premium class for modern glassmorphism panels */
+.glass-panel {
+  @apply backdrop-blur-md bg-white/5 border border-white/10 shadow-xl shadow-black/30;
+}
+
+.glass-input {
+  @apply w-full bg-slate-900/60 border border-slate-700/60 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-400 focus:outline-none focus:border-brand-accent focus:ring-1 focus:ring-brand-accent transition-all duration-300;
+}
+
+.glass-btn {
+  @apply bg-brand-accent hover:bg-indigo-500 active:scale-[0.98] text-white font-medium rounded-xl px-6 py-3 transition-all duration-300 shadow-lg shadow-brand-accent/20 hover:shadow-brand-accent/30 hover:scale-[1.02] cursor-pointer flex items-center justify-center gap-2;
+}
+
+.glass-btn-secondary {
+  @apply backdrop-blur-sm bg-white/10 hover:bg-white/20 active:scale-[0.98] text-white font-medium border border-white/10 rounded-xl px-6 py-3 transition-all duration-300 hover:scale-[1.02] cursor-pointer flex items-center justify-center gap-2;
+}
+
+/* Beautiful custom modern dark scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  @apply bg-slate-950;
+}
+
+::-webkit-scrollbar-thumb {
+  @apply bg-slate-800 rounded-full hover:bg-slate-700 transition-colors;
+}
+
+/* Invert the native browser date picker calendar icon to make it white */
+input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1);
+  cursor: pointer;
+  opacity: 0.8;
+  transition: opacity 0.2s;
+}
+
+input[type="date"]::-webkit-calendar-picker-indicator:hover {
+  opacity: 1;
+}
