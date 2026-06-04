@@ -110,9 +110,25 @@ exports.checkOut = async (req, res) => {
     const checkOutTime = new Date();
     attendance.checkOut = checkOutTime;
 
-    // Calculate worked hours (difference in milliseconds converted to decimal hours)
+    // Auto-close any active break if they check out while on a break
+    const openBreak = attendance.breaks.find(b => !b.breakOut);
+    if (openBreak) {
+      openBreak.breakOut = checkOutTime;
+    }
+
+    // Re-calculate totalBreakDuration
+    let totalMs = 0;
+    attendance.breaks.forEach(b => {
+      if (b.breakIn && b.breakOut) {
+        totalMs += new Date(b.breakOut).getTime() - new Date(b.breakIn).getTime();
+      }
+    });
+    attendance.totalBreakDuration = parseFloat((totalMs / (1000 * 60 * 60)).toFixed(2));
+
+    // Calculate worked hours (difference in milliseconds minus total break duration)
     const diffMs = checkOutTime.getTime() - attendance.checkIn.getTime();
-    const hoursWorked = parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
+    const totalElapsedHours = diffMs / (1000 * 60 * 60);
+    const hoursWorked = parseFloat((Math.max(0, totalElapsedHours - attendance.totalBreakDuration)).toFixed(2));
     attendance.workHours = hoursWorked;
 
     // If worked hours are less than 4 hours, mark as Half Day
@@ -152,10 +168,13 @@ exports.getTodayStatus = async (req, res) => {
     const todayStr = getTodayDateString(timeZone);
     const attendance = await Attendance.findOne({ employee: req.user.id, date: todayStr });
 
+    const onBreak = !!(attendance && attendance.breaks.find(b => !b.breakOut));
+
     res.status(200).json({
       success: true,
       checkedIn: !!attendance,
       checkedOut: !!(attendance && attendance.checkOut),
+      onBreak,
       record: attendance || null
     });
   } catch (error) {
@@ -253,5 +272,109 @@ exports.getDepartmentAttendance = async (req, res) => {
   } catch (error) {
     console.error('Fetch Department Attendance Error:', error.message);
     res.status(500).json({ success: false, message: 'Server error fetching department attendance logs' });
+  }
+};
+
+// @desc    Employee Break-In
+// @route   POST /api/attendance/breakin
+// @access  Private (Employee)
+exports.breakIn = async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+    const user = await User.findById(employeeId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const timeZone = regionTimeZones[user.employeeDetails?.region] || 'Asia/Kolkata';
+    const todayStr = getTodayDateString(timeZone);
+
+    const attendance = await Attendance.findOne({ employee: employeeId, date: todayStr });
+    if (!attendance) {
+      return res.status(400).json({ success: false, message: 'You must check in first!' });
+    }
+
+    if (attendance.checkOut) {
+      return res.status(400).json({ success: false, message: 'You have already checked out today!' });
+    }
+
+    // Check if there's an open break (missing breakOut)
+    const openBreak = attendance.breaks.find(b => !b.breakOut);
+    if (openBreak) {
+      return res.status(400).json({ success: false, message: 'You are already on a break!' });
+    }
+
+    attendance.breaks.push({ breakIn: new Date() });
+    await attendance.save();
+
+    if (global.io) {
+      global.io.emit('attendance_update');
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Break started successfully',
+      attendance
+    });
+  } catch (error) {
+    console.error('BreakIn Error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error starting break' });
+  }
+};
+
+// @desc    Employee Break-Out
+// @route   POST /api/attendance/breakout
+// @access  Private (Employee)
+exports.breakOut = async (req, res) => {
+  try {
+    const employeeId = req.user.id;
+    const user = await User.findById(employeeId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    const timeZone = regionTimeZones[user.employeeDetails?.region] || 'Asia/Kolkata';
+    const todayStr = getTodayDateString(timeZone);
+
+    const attendance = await Attendance.findOne({ employee: employeeId, date: todayStr });
+    if (!attendance) {
+      return res.status(400).json({ success: false, message: 'Attendance record not found!' });
+    }
+
+    if (attendance.checkOut) {
+      return res.status(400).json({ success: false, message: 'You have already checked out today!' });
+    }
+
+    // Find open break
+    const openBreak = attendance.breaks.find(b => !b.breakOut);
+    if (!openBreak) {
+      return res.status(400).json({ success: false, message: 'You are not on a break!' });
+    }
+
+    openBreak.breakOut = new Date();
+
+    // Re-calculate totalBreakDuration
+    let totalMs = 0;
+    attendance.breaks.forEach(b => {
+      if (b.breakIn && b.breakOut) {
+        totalMs += new Date(b.breakOut).getTime() - new Date(b.breakIn).getTime();
+      }
+    });
+    attendance.totalBreakDuration = parseFloat((totalMs / (1000 * 60 * 60)).toFixed(2));
+
+    await attendance.save();
+
+    if (global.io) {
+      global.io.emit('attendance_update');
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Break ended successfully',
+      attendance
+    });
+  } catch (error) {
+    console.error('BreakOut Error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error ending break' });
   }
 };

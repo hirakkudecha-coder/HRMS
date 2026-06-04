@@ -23,7 +23,7 @@ const Dashboard = () => {
   const [time, setTime] = useState(new Date());
 
   // API Integrated States
-  const [attendance, setAttendance] = useState({ checkedIn: false, checkedOut: false, record: null });
+  const [attendance, setAttendance] = useState({ checkedIn: false, checkedOut: false, onBreak: false, record: null });
   const [leaves, setLeaves] = useState({ balances: { Casual: 10, Sick: 10, Paid: 15 }, history: [] });
   const [tasks, setTasks] = useState({ counts: { total: 0, todo: 0, inProgress: 0, completed: 0 }, tasks: [] });
   const [notices, setNotices] = useState([]);
@@ -132,6 +132,32 @@ const Dashboard = () => {
     }
   };
 
+  // Start a break
+  const handleBreakIn = async () => {
+    try {
+      const res = await api.post('/attendance/breakin');
+      if (res.data.success) {
+        showBanner('success', 'Break started successfully!');
+        fetchDashboardData();
+      }
+    } catch (err) {
+      showBanner('danger', err.response?.data?.message || 'Failed to start break');
+    }
+  };
+
+  // End a break
+  const handleBreakOut = async () => {
+    try {
+      const res = await api.post('/attendance/breakout');
+      if (res.data.success) {
+        showBanner('success', 'Break ended successfully!');
+        fetchDashboardData();
+      }
+    } catch (err) {
+      showBanner('danger', err.response?.data?.message || 'Failed to end break');
+    }
+  };
+
   // Quick mark a task as completed directly from the checklist on the Dashboard
   const handleQuickCompleteTask = async (taskId) => {
     try {
@@ -180,7 +206,24 @@ const Dashboard = () => {
     if (attendance.checkedIn && !attendance.checkedOut && attendance.record?.checkIn) {
       const checkInMs = new Date(attendance.record.checkIn).getTime();
       const currentMs = time.getTime();
-      const diffMs = Math.max(0, currentMs - checkInMs);
+
+      // 1. Calculate completed breaks duration
+      let completedBreaksMs = 0;
+      const breaks = attendance.record?.breaks || [];
+      breaks.forEach(b => {
+        if (b.breakIn && b.breakOut) {
+          completedBreaksMs += new Date(b.breakOut).getTime() - new Date(b.breakIn).getTime();
+        }
+      });
+
+      // 2. If currently on break, calculate active break duration
+      let activeBreakMs = 0;
+      const openBreak = breaks.find(b => !b.breakOut);
+      if (openBreak) {
+        activeBreakMs = Math.max(0, currentMs - new Date(openBreak.breakIn).getTime());
+      }
+
+      const diffMs = Math.max(0, currentMs - checkInMs - completedBreaksMs - activeBreakMs);
       return parseFloat((diffMs / (1000 * 60 * 60)).toFixed(2));
     }
     if (attendance.checkedOut && attendance.record?.workHours !== undefined) {
@@ -306,8 +349,15 @@ const Dashboard = () => {
             </h3>
             <p className="text-[11px] text-slate-500 mt-1 font-medium">{formatDateString(time)}</p>
             {attendance.checkedIn && (
-              <div className="mt-2.5 text-[10px] font-bold text-brand-accent bg-brand-accent/10 border border-brand-accent/20 px-3 py-1 rounded-full inline-flex items-center gap-1.5 animate-pulse">
-                <span>Target Checkout: <strong>{getTargetCheckoutTime()}</strong></span>
+              <div className="flex flex-col gap-2 mt-2.5 items-center">
+                <div className="text-[10px] font-bold text-brand-accent bg-brand-accent/10 border border-brand-accent/20 px-3 py-1 rounded-full inline-flex items-center gap-1.5 animate-pulse">
+                  <span>Target Checkout: <strong>{getTargetCheckoutTime()}</strong></span>
+                </div>
+                {attendance.onBreak && (
+                  <div className="text-[10px] font-bold text-amber-400 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full inline-flex items-center gap-1.5 animate-pulse">
+                    <span>☕ Currently on Break</span>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -323,13 +373,32 @@ const Dashboard = () => {
                 <span>Check In for Shift</span>
               </button>
             ) : !attendance.checkedOut ? (
-              <button
-                onClick={handleCheckOut}
-                className="w-full bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-semibold rounded-xl px-6 py-3.5 transition-all duration-300 shadow-lg shadow-rose-500/20 hover:shadow-rose-500/30 hover:scale-[1.02] cursor-pointer flex items-center justify-center gap-2 text-sm"
-              >
-                <LogOut className="w-4 h-4" />
-                <span>Check Out from Shift</span>
-              </button>
+              attendance.onBreak ? (
+                <button
+                  onClick={handleBreakOut}
+                  className="w-full bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-semibold rounded-xl px-6 py-3.5 transition-all duration-300 shadow-lg shadow-emerald-600/20 hover:shadow-emerald-600/30 hover:scale-[1.02] cursor-pointer flex items-center justify-center gap-2 text-sm"
+                >
+                  <Clock className="w-4 h-4" />
+                  <span>End Break (Resume Shift)</span>
+                </button>
+              ) : (
+                <div className="flex flex-col gap-3 w-full">
+                  <button
+                    onClick={handleCheckOut}
+                    className="w-full bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-semibold rounded-xl px-6 py-3.5 transition-all duration-300 shadow-lg shadow-rose-500/20 hover:shadow-rose-500/30 hover:scale-[1.02] cursor-pointer flex items-center justify-center gap-2 text-sm"
+                  >
+                    <LogOut className="w-4 h-4" />
+                    <span>Check Out from Shift</span>
+                  </button>
+                  <button
+                    onClick={handleBreakIn}
+                    className="w-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-semibold rounded-xl px-6 py-3.5 transition-all duration-300 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 hover:scale-[1.02] cursor-pointer flex items-center justify-center gap-2 text-sm"
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>Start Break</span>
+                  </button>
+                </div>
+              )
             ) : (
               <div className="w-full p-3.5 rounded-xl bg-slate-950/60 border border-white/5 text-slate-400 text-xs font-medium flex items-center justify-center gap-2">
                 <CheckCircle className="w-4 h-4 text-emerald-400" />

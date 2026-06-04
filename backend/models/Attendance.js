@@ -27,6 +27,21 @@ const AttendanceSchema = new mongoose.Schema({
   workHours: {
     type: Number, // Number of hours worked today
     default: 0
+  },
+  breaks: [
+    {
+      breakIn: {
+        type: Date,
+        required: true
+      },
+      breakOut: {
+        type: Date
+      }
+    }
+  ],
+  totalBreakDuration: {
+    type: Number, // Total break time in hours
+    default: 0
   }
 }, {
   timestamps: true // Automatically create 'createdAt' and 'updatedAt' fields
