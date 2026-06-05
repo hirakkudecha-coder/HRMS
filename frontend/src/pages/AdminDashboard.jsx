@@ -157,6 +157,21 @@ const AdminDashboard = () => {
       triggerBanner('danger', 'Name, email, and password are required.');
       return;
     }
+
+    const hasUppercase = /[A-Z]/.test(addForm.password);
+    const hasLowercase = /[a-z]/.test(addForm.password);
+    const hasDigit = /\d/.test(addForm.password);
+    const hasSpecialChar = /[@$!%*?&]/.test(addForm.password);
+
+    if (addForm.password.length < 8) {
+      triggerBanner('danger', 'Password must be at least 8 characters long.');
+      return;
+    }
+
+    if (!hasUppercase || !hasLowercase || !hasDigit || !hasSpecialChar) {
+      triggerBanner('danger', 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (e.g. @$!%*?&).');
+      return;
+    }
     setSubmitting(true);
     try {
       await api.post('/admin/employees', addForm);
@@ -969,7 +984,7 @@ const AdminDashboard = () => {
               </div>
               <div>
                 <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Password *</label>
-                <input type="password" className="glass-input" placeholder="Min 6 characters" value={addForm.password} onChange={e => setAddForm(p => ({ ...p, password: e.target.value }))} required />
+                <input type="password" className="glass-input" placeholder="Min 8 chars (e.g., Password@123)" value={addForm.password} onChange={e => setAddForm(p => ({ ...p, password: e.target.value }))} required />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>

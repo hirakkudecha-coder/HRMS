@@ -7,7 +7,7 @@ import { Mail, Lock, ShieldAlert, ArrowRight, ArrowLeft, Eye, EyeOff } from 'luc
 const Login = () => {
   // Input form states - Pre-fill Employee role by default
   const [email, setEmail] = useState('employee@apex.com');
-  const [password, setPassword] = useState(localStorage.getItem('autofill_password_employee') || 'password123');
+  const [password, setPassword] = useState(localStorage.getItem('autofill_password_employee') || 'Password@123');
   const [activeTab, setActiveTab] = useState('employee');
   
   // UI states
@@ -24,7 +24,7 @@ const Login = () => {
     setError('');
     
     // Dynamic pre-fill from localStorage (synchronized upon password change) or default fallback
-    const savedPassword = localStorage.getItem(`autofill_password_${role}`) || 'password123';
+    const savedPassword = localStorage.getItem(`autofill_password_${role}`) || 'Password@123';
     
     if (role === 'employee') {
       setEmail('employee@apex.com');

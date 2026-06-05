@@ -92,8 +92,18 @@ const Profile = () => {
       return;
     }
 
-    if (newPassword.length < 6) {
-      triggerBanner('danger', 'New password must be at least 6 characters long.');
+    const hasUppercase = /[A-Z]/.test(newPassword);
+    const hasLowercase = /[a-z]/.test(newPassword);
+    const hasDigit = /\d/.test(newPassword);
+    const hasSpecialChar = /[@$!%*?&]/.test(newPassword);
+
+    if (newPassword.length < 8) {
+      triggerBanner('danger', 'New password must be at least 8 characters long.');
+      return;
+    }
+
+    if (!hasUppercase || !hasLowercase || !hasDigit || !hasSpecialChar) {
+      triggerBanner('danger', 'New password must contain at least one uppercase letter, one lowercase letter, one number, and one special character (e.g. @$!%*?&).');
       return;
     }
 

@@ -183,7 +183,7 @@ const seedDemoData = async () => {
     const admin = await User.create({
       name: 'Manager Admin',
       email: 'admin@apex.com',
-      password: 'password123', // Will be hashed automatically by pre-save hook
+      password: 'Password@123', // Will be hashed automatically by pre-save hook
       role: 'admin'
     });
     console.log('- Demo Administrator Seeded: admin@apex.com');
@@ -192,7 +192,7 @@ const seedDemoData = async () => {
     const manager = await User.create({
       name: 'Richard Roe',
       email: 'manager@apex.com',
-      password: 'password123',
+      password: 'Password@123',
       role: 'manager',
       employeeDetails: {
         employeeId: 'MGR5521',
@@ -210,7 +210,7 @@ const seedDemoData = async () => {
     const employee = await User.create({
       name: 'Jane Doe',
       email: 'employee@apex.com',
-      password: 'password123',
+      password: 'Password@123',
       role: 'employee',
       employeeDetails: {
         employeeId: 'EMP8842',
@@ -228,7 +228,7 @@ const seedDemoData = async () => {
     const employeeIndia = await User.create({
       name: 'Amit Patel',
       email: 'amit@apex.com',
-      password: 'password123',
+      password: 'Password@123',
       role: 'employee',
       employeeDetails: {
         employeeId: 'EMP8843',
