@@ -16,6 +16,7 @@ const Leave = require('./models/Leave');
 const Task = require('./models/Task');
 const Salary = require('./models/Salary');
 const Notice = require('./models/Notice');
+const Holiday = require('./models/Holiday');
 
 // Import MVC Route Files
 const authRoutes = require('./routes/authRoutes');
@@ -27,6 +28,7 @@ const salaryRoutes = require('./routes/salaryRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const noticeRoutes = require('./routes/noticeRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const holidayRoutes = require('./routes/holidayRoutes');
 
 // Initialize the Express Application
 const app = express();
@@ -58,6 +60,7 @@ app.use('/api/salary', salaryRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/notices', noticeRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/holidays', holidayRoutes);
 
 // Base route for API availability check
 app.get('/', (req, res) => {
@@ -78,8 +81,46 @@ app.use((err, req, res, next) => {
 });
 
 // 5. Automatic Database Seeding Engine
+// Helper function to dynamically calculate details for the last three calendar months
+const getLastThreeMonths = () => {
+  const list = [];
+  const now = new Date();
+  for (let i = 1; i <= 3; i++) {
+    const tempDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthName = tempDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    
+    // Get last day of that specific month
+    const lastDay = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+    
+    list.push({
+      month: monthName,
+      paidDays: lastDay.getDate(),
+      paymentDate: lastDay
+    });
+  }
+  return list;
+};
+
 const seedDemoData = async () => {
   try {
+    // Force a database flush if the seeded salary records months are outdated
+    const expectedMonths = getLastThreeMonths().map(m => m.month);
+    const sampleSalaries = await Salary.find({}).select('month');
+    const existingMonths = sampleSalaries.map(s => s.month);
+    const hasOutdatedSalaries = expectedMonths.some(m => !existingMonths.includes(m));
+    if (sampleSalaries.length > 0 && hasOutdatedSalaries) {
+      console.log('Detected outdated salary records in database. Flushing database collections for dynamic re-seeding...');
+      await Promise.all([
+        User.deleteMany({}),
+        Attendance.deleteMany({}),
+        Leave.deleteMany({}),
+        Task.deleteMany({}),
+        Salary.deleteMany({}),
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
+      ]);
+    }
+
     // Force a database flush if the demo employee has the old region (India) or is missing, to ensure region is USA and password is reset
     const demoEmployee = await User.findOne({ email: 'employee@apex.com' });
     if (!demoEmployee || demoEmployee.employeeDetails?.region !== 'USA') {
@@ -90,7 +131,23 @@ const seedDemoData = async () => {
         Leave.deleteMany({}),
         Task.deleteMany({}),
         Salary.deleteMany({}),
-        Notice.deleteMany({})
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
+      ]);
+    }
+
+    // Force a database flush if the Admin details are not configured, to apply backdated joiningDate
+    const adminUser = await User.findOne({ email: 'admin@apex.com' });
+    if (!adminUser || adminUser.employeeDetails?.employeeId !== 'ADM0001') {
+      console.log('Detected missing or unconfigured Admin account. Resetting database to apply Admin details...');
+      await Promise.all([
+        User.deleteMany({}),
+        Attendance.deleteMany({}),
+        Leave.deleteMany({}),
+        Task.deleteMany({}),
+        Salary.deleteMany({}),
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
       ]);
     }
 
@@ -110,7 +167,8 @@ const seedDemoData = async () => {
         Leave.deleteMany({}),
         Task.deleteMany({}),
         Salary.deleteMany({}),
-        Notice.deleteMany({})
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
       ]);
     }
 
@@ -124,7 +182,8 @@ const seedDemoData = async () => {
         Leave.deleteMany({}),
         Task.deleteMany({}),
         Salary.deleteMany({}),
-        Notice.deleteMany({})
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
       ]);
     }
 
@@ -143,7 +202,8 @@ const seedDemoData = async () => {
         Leave.deleteMany({}),
         Task.deleteMany({}),
         Salary.deleteMany({}),
-        Notice.deleteMany({})
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
       ]);
     }
 
@@ -170,6 +230,37 @@ const seedDemoData = async () => {
       console.log('- Demo Notices Seeded');
     }
 
+    // Check if Holiday collection is empty or has outdated holidays (wrong calendar year)
+    const currentYear = new Date().getFullYear();
+    const sampleHoliday = await Holiday.findOne({});
+    if (sampleHoliday && new Date(sampleHoliday.date).getFullYear() !== currentYear) {
+      console.log('Detected outdated holidays. Flushing holiday records for current year re-seeding...');
+      await Holiday.deleteMany({});
+    }
+
+    const holidayCount = await Holiday.countDocuments({});
+    if (holidayCount === 0) {
+      console.log('No holidays found. Seeding dynamic Indian festivals & public holidays for the year...');
+      await Holiday.create([
+        { name: "New Year's Day", date: new Date(currentYear, 0, 1), description: 'Celebration of the new calendar year' },
+        { name: 'Republic Day', date: new Date(currentYear, 0, 26), description: 'Anniversary of the Constitution of India' },
+        { name: 'Holi Festival', date: new Date(currentYear, 2, 3), description: 'Festival of colors, marking the arrival of spring' },
+        { name: 'Good Friday', date: new Date(currentYear, 3, 2), description: 'Christian holiday commemorating crucifixion' },
+        { name: 'Ambedkar Jayanti', date: new Date(currentYear, 3, 14), description: 'Birthday of Dr. B. R. Ambedkar' },
+        { name: 'May Day (Labor Day)', date: new Date(currentYear, 4, 1), description: 'Celebration of the international labor movement' },
+        { name: 'Eid-ul-Fitr', date: new Date(currentYear, 5, 2), description: 'Islamic festival marking the end of Ramadan' },
+        { name: 'Independence Day', date: new Date(currentYear, 7, 15), description: 'Anniversary of independence from British rule' },
+        { name: 'Janmashtami', date: new Date(currentYear, 8, 4), description: 'Hindu festival celebrating the birth of Lord Krishna' },
+        { name: 'Gandhi Jayanti', date: new Date(currentYear, 9, 2), description: 'Birthday of Mahatma Gandhi' },
+        { name: 'Maha Navami / Dussehra', date: new Date(currentYear, 9, 19), description: 'Hindu festival victory of good over evil' },
+        { name: 'Vijayadashami', date: new Date(currentYear, 9, 20), description: 'Hindu festival celebrating the end of Navratri' },
+        { name: 'Diwali / Deepavali', date: new Date(currentYear, 10, 9), description: 'Festival of lights' },
+        { name: 'Govardhan Puja', date: new Date(currentYear, 10, 10), description: 'Hindu festival honoring Lord Krishna' },
+        { name: 'Christmas Day', date: new Date(currentYear, 11, 25), description: 'Celebration of the birth of Jesus Christ' }
+      ]);
+      console.log('- Demo Indian & Public Holidays Seeded');
+    }
+
     // Check if the User collection has records
     const userCount = await User.countDocuments();
     if (userCount > 0) {
@@ -184,7 +275,14 @@ const seedDemoData = async () => {
       name: 'Manager Admin',
       email: 'admin@apex.com',
       password: 'Password@123', // Will be hashed automatically by pre-save hook
-      role: 'admin'
+      role: 'admin',
+      employeeDetails: {
+        employeeId: 'ADM0001',
+        department: 'Administration',
+        designation: 'System Administrator',
+        region: 'USA',
+        joiningDate: new Date('2023-01-15')
+      }
     });
     console.log('- Demo Administrator Seeded: admin@apex.com');
 
@@ -439,10 +537,12 @@ const seedDemoData = async () => {
     console.log('- Demo India Employee Tasks Seeded');
 
     // 5.6. Seed Salary Records (Past 3 months of payslips in INR with all Pay Heads)
+    const dynamicMonths = getLastThreeMonths();
+
     const salaryRecords = [
       {
         employee: employee._id,
-        month: 'February 2026',
+        month: dynamicMonths[2].month,
         basicSalary: 60000,
         hra: 30000,
         adhocAllowance: 36000,
@@ -456,13 +556,13 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 7400,
         netSalary: 142600,
-        paidDays: 28,
+        paidDays: dynamicMonths[2].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-02-28')
+        paymentDate: dynamicMonths[2].paymentDate
       },
       {
         employee: employee._id,
-        month: 'March 2026',
+        month: dynamicMonths[1].month,
         basicSalary: 60000,
         hra: 30000,
         adhocAllowance: 36000,
@@ -476,13 +576,13 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 7400,
         netSalary: 142600,
-        paidDays: 31,
+        paidDays: dynamicMonths[1].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-03-31')
+        paymentDate: dynamicMonths[1].paymentDate
       },
       {
         employee: employee._id,
-        month: 'April 2026',
+        month: dynamicMonths[0].month,
         basicSalary: 60000,
         hra: 30000,
         adhocAllowance: 36000,
@@ -496,9 +596,9 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 7400,
         netSalary: 142600,
-        paidDays: 30,
+        paidDays: dynamicMonths[0].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-04-30')
+        paymentDate: dynamicMonths[0].paymentDate
       }
     ];
     await Salary.insertMany(salaryRecords);
@@ -508,7 +608,7 @@ const seedDemoData = async () => {
     const salaryRecordsIndia = [
       {
         employee: employeeIndia._id,
-        month: 'February 2026',
+        month: dynamicMonths[2].month,
         basicSalary: 40000,
         hra: 20000,
         adhocAllowance: 20000,
@@ -522,13 +622,13 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 5000,
         netSalary: 90000,
-        paidDays: 28,
+        paidDays: dynamicMonths[2].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-02-28')
+        paymentDate: dynamicMonths[2].paymentDate
       },
       {
         employee: employeeIndia._id,
-        month: 'March 2026',
+        month: dynamicMonths[1].month,
         basicSalary: 40000,
         hra: 20000,
         adhocAllowance: 20000,
@@ -542,13 +642,13 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 5000,
         netSalary: 90000,
-        paidDays: 31,
+        paidDays: dynamicMonths[1].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-03-31')
+        paymentDate: dynamicMonths[1].paymentDate
       },
       {
         employee: employeeIndia._id,
-        month: 'April 2026',
+        month: dynamicMonths[0].month,
         basicSalary: 40000,
         hra: 20000,
         adhocAllowance: 20000,
@@ -562,9 +662,9 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 5000,
         netSalary: 90000,
-        paidDays: 30,
+        paidDays: dynamicMonths[0].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-04-30')
+        paymentDate: dynamicMonths[0].paymentDate
       }
     ];
     await Salary.insertMany(salaryRecordsIndia);
@@ -574,7 +674,7 @@ const seedDemoData = async () => {
     const managerSalaryRecords = [
       {
         employee: manager._id,
-        month: 'February 2026',
+        month: dynamicMonths[2].month,
         basicSalary: 100000,
         hra: 50000,
         adhocAllowance: 40000,
@@ -588,13 +688,13 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 12200,
         netSalary: 207800,
-        paidDays: 28,
+        paidDays: dynamicMonths[2].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-02-28')
+        paymentDate: dynamicMonths[2].paymentDate
       },
       {
         employee: manager._id,
-        month: 'March 2026',
+        month: dynamicMonths[1].month,
         basicSalary: 100000,
         hra: 50000,
         adhocAllowance: 40000,
@@ -608,13 +708,13 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 12200,
         netSalary: 207800,
-        paidDays: 31,
+        paidDays: dynamicMonths[1].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-03-31')
+        paymentDate: dynamicMonths[1].paymentDate
       },
       {
         employee: manager._id,
-        month: 'April 2026',
+        month: dynamicMonths[0].month,
         basicSalary: 100000,
         hra: 50000,
         adhocAllowance: 40000,
@@ -628,9 +728,9 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 12200,
         netSalary: 207800,
-        paidDays: 30,
+        paidDays: dynamicMonths[0].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-04-30')
+        paymentDate: dynamicMonths[0].paymentDate
       }
     ];
     await Salary.insertMany(managerSalaryRecords);
@@ -640,7 +740,7 @@ const seedDemoData = async () => {
     const adminSalaryRecords = [
       {
         employee: admin._id,
-        month: 'February 2026',
+        month: dynamicMonths[2].month,
         basicSalary: 120000,
         hra: 60000,
         adhocAllowance: 50000,
@@ -654,13 +754,13 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 14600,
         netSalary: 261400,
-        paidDays: 28,
+        paidDays: dynamicMonths[2].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-02-28')
+        paymentDate: dynamicMonths[2].paymentDate
       },
       {
         employee: admin._id,
-        month: 'March 2026',
+        month: dynamicMonths[1].month,
         basicSalary: 120000,
         hra: 60000,
         adhocAllowance: 50000,
@@ -674,13 +774,13 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 14600,
         netSalary: 261400,
-        paidDays: 31,
+        paidDays: dynamicMonths[1].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-03-31')
+        paymentDate: dynamicMonths[1].paymentDate
       },
       {
         employee: admin._id,
-        month: 'April 2026',
+        month: dynamicMonths[0].month,
         basicSalary: 120000,
         hra: 60000,
         adhocAllowance: 50000,
@@ -694,9 +794,9 @@ const seedDemoData = async () => {
         professionalTax: 200,
         grossDeductions: 14600,
         netSalary: 261400,
-        paidDays: 30,
+        paidDays: dynamicMonths[0].paidDays,
         paymentStatus: 'Paid',
-        paymentDate: new Date('2026-04-30')
+        paymentDate: dynamicMonths[0].paymentDate
       }
     ];
     await Salary.insertMany(adminSalaryRecords);

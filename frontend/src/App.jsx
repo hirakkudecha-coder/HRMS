@@ -25,7 +25,7 @@ import Home from './pages/Home';
 
 // Layout Wrapper for all protected dashboard views
 const DashboardLayout = ({ children }) => {
-  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(window.innerWidth >= 1024);
 
   return (
     <div className="min-h-screen bg-brand-dark flex">
@@ -33,7 +33,7 @@ const DashboardLayout = ({ children }) => {
       <Sidebar isOpen={sidebarOpen} toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
       
       {/* Main content right panel */}
-      <div className="flex-1 lg:pl-64 flex flex-col min-w-0 min-h-screen">
+      <div className={`flex-1 ${sidebarOpen ? 'lg:pl-64' : 'lg:pl-0'} flex flex-col min-w-0 min-h-screen transition-all duration-300`}>
         {/* Top visual navbar */}
         <Navbar toggleSidebar={() => setSidebarOpen(!sidebarOpen)} />
         

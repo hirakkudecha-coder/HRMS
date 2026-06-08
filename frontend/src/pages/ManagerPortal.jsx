@@ -266,6 +266,67 @@ const ManagerPortal = () => {
   const pendingLeavesCount = leaves.filter(l => l.status === 'Pending').length;
   const pendingTasksCount = tasks.filter(t => t.status !== 'Completed').length;
 
+  const isLeaveActiveToday = (startDateStr, endDateStr) => {
+    const today = new Date();
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const start = new Date(startDateStr);
+    const end = new Date(endDateStr);
+    const startZero = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    return todayZero >= startZero && todayZero <= endZero;
+  };
+
+  const formatLeavePeriod = (startDateStr, endDateStr) => {
+    const today = new Date();
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const start = new Date(startDateStr);
+    const end = new Date(endDateStr);
+    const startZero = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+    if (todayZero >= startZero && todayZero <= endZero) {
+      return 'On Leave Today';
+    }
+
+    const startOption = { month: 'short', day: 'numeric' };
+    const endOption = { month: 'short', day: 'numeric' };
+    if (start.getFullYear() !== today.getFullYear()) {
+      startOption.year = '2-digit';
+    }
+    const localStart = start.toLocaleDateString('en-US', startOption);
+    const localEnd = end.toLocaleDateString('en-US', endOption);
+    
+    return localStart === localEnd ? localStart : `${localStart} - ${localEnd}`;
+  };
+
+  const teamMembersOnLeaveToday = leaves
+    .filter(l => {
+      if (l.status !== 'Approved') return false;
+      const today = new Date();
+      const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const end = new Date(l.endDate);
+      const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+      return endZero >= todayZero;
+    })
+    .sort((a, b) => {
+      const today = new Date();
+      const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      
+      const startA = new Date(a.startDate);
+      const startZeroA = new Date(startA.getFullYear(), startA.getMonth(), startA.getDate());
+      
+      const startB = new Date(b.startDate);
+      const startZeroB = new Date(startB.getFullYear(), startB.getMonth(), startB.getDate());
+
+      const isActiveA = todayZero >= startZeroA;
+      const isActiveB = todayZero >= startZeroB;
+
+      if (isActiveA && !isActiveB) return -1;
+      if (!isActiveA && isActiveB) return 1;
+
+      return startZeroA - startZeroB;
+    });
+
   return (
     <div className="space-y-8 animate-[fadeIn_0.5s_ease-out]">
       {/* Page Title & Scoped Department Banner */}
@@ -380,75 +441,110 @@ const ManagerPortal = () => {
       
       {/* 1. OVERVIEW TEAM ROSTER PANEL */}
       {activeTab === 'Overview' && (
-        <div className="glass-panel rounded-3xl bg-slate-900/20 overflow-hidden">
-          <div className="p-6 border-b border-white/10 flex items-center justify-between">
-            <h3 className="font-bold text-white text-lg flex items-center gap-2">
-              <span>👥</span> Team Roster Directory
-            </h3>
-            <span className="text-xs px-2.5 py-1 rounded-lg bg-white/5 text-slate-300 font-semibold">
-              Total {employees.length} Members
-            </span>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Main Content: Team Roster Directory (col-span-2) */}
+          <div className="lg:col-span-2 glass-panel rounded-3xl bg-slate-900/20 overflow-hidden self-start">
+            <div className="p-6 border-b border-white/10 flex items-center justify-between">
+              <h3 className="font-bold text-white text-lg flex items-center gap-2">
+                <span>👥</span> Team Roster Directory
+              </h3>
+              <span className="text-xs px-2.5 py-1 rounded-lg bg-white/5 text-slate-300 font-semibold">
+                Total {employees.length} Members
+              </span>
+            </div>
+
+            {employees.length > 0 ? (
+              <div className="overflow-x-auto w-full">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-950/60 border-b border-white/5 text-xs text-slate-400 font-semibold tracking-wider uppercase">
+                      <th className="px-6 py-4">Employee</th>
+                      <th className="px-6 py-4">Employee ID</th>
+                      <th className="px-6 py-4">Role / Title</th>
+                      <th className="px-6 py-4">Operating Region</th>
+                      <th className="px-6 py-4">Contact Detail</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/5 text-sm text-slate-300">
+                    {employees.map((emp) => (
+                      <tr key={emp._id} className="hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden">
+                            {emp.employeeDetails?.profileImage ? (
+                              <img
+                                src={`http://localhost:5000${emp.employeeDetails.profileImage}`}
+                                alt={emp.name}
+                                className="w-full h-full object-cover"
+                                onError={(e) => { e.target.style.display = 'none'; }}
+                              />
+                            ) : (
+                              emp.name.charAt(0).toUpperCase()
+                            )}
+                          </div>
+                          <div>
+                            <span className="block font-bold text-white leading-none">{emp.name}</span>
+                            <span className="text-[10px] text-slate-500 mt-1 block">{emp.email}</span>
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 font-mono text-slate-300 text-xs">
+                          {emp.employeeDetails?.employeeId || 'MGR-TBD'}
+                        </td>
+                        <td className="px-6 py-4">
+                          <span className="block font-semibold text-slate-300">{emp.employeeDetails?.designation}</span>
+                          <span className="text-[10px] text-indigo-400 capitalize">{emp.role}</span>
+                        </td>
+                        <td className="px-6 py-4 font-medium">
+                          <span className="px-2 py-1 rounded bg-slate-800 text-[10px] border border-slate-700 text-slate-300">
+                            {emp.employeeDetails?.region || 'India'}
+                          </span>
+                        </td>
+                        <td className="px-6 py-4 text-xs font-semibold text-slate-400">
+                          {emp.employeeDetails?.phone || 'No phone supplied'}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+                <AlertCircle className="w-12 h-12 text-slate-700 mb-2 animate-pulse" />
+                <p className="text-sm font-medium">No employee team roster records found.</p>
+              </div>
+            )}
           </div>
 
-          {employees.length > 0 ? (
-            <div className="overflow-x-auto w-full">
-              <table className="w-full text-left border-collapse">
-                <thead>
-                  <tr className="bg-slate-950/60 border-b border-white/5 text-xs text-slate-400 font-semibold tracking-wider uppercase">
-                    <th className="px-6 py-4">Employee</th>
-                    <th className="px-6 py-4">Employee ID</th>
-                    <th className="px-6 py-4">Role / Title</th>
-                    <th className="px-6 py-4">Operating Region</th>
-                    <th className="px-6 py-4">Contact Detail</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-white/5 text-sm text-slate-300">
-                  {employees.map((emp) => (
-                    <tr key={emp._id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4 flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden">
-                          {emp.employeeDetails?.profileImage ? (
-                            <img
-                              src={`http://localhost:5000${emp.employeeDetails.profileImage}`}
-                              alt={emp.name}
-                              className="w-full h-full object-cover"
-                              onError={(e) => { e.target.style.display = 'none'; }}
-                            />
-                          ) : (
-                            emp.name.charAt(0).toUpperCase()
-                          )}
-                        </div>
-                        <div>
-                          <span className="block font-bold text-white leading-none">{emp.name}</span>
-                          <span className="text-[10px] text-slate-500 mt-1 block">{emp.email}</span>
-                        </div>
-                      </td>
-                      <td className="px-6 py-4 font-mono text-slate-300 text-xs">
-                        {emp.employeeDetails?.employeeId || 'MGR-TBD'}
-                      </td>
-                      <td className="px-6 py-4">
-                        <span className="block font-semibold text-slate-300">{emp.employeeDetails?.designation}</span>
-                        <span className="text-[10px] text-indigo-400 capitalize">{emp.role}</span>
-                      </td>
-                      <td className="px-6 py-4 font-medium">
-                        <span className="px-2 py-1 rounded bg-slate-800 text-[10px] border border-slate-700 text-slate-300">
-                          {emp.employeeDetails?.region || 'India'}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-xs font-semibold text-slate-400">
-                        {emp.employeeDetails?.phone || 'No phone supplied'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-              <AlertCircle className="w-12 h-12 text-slate-700 mb-2 animate-pulse" />
-              <p className="text-sm font-medium">No employee team roster records found.</p>
-            </div>
-          )}
+          {/* Side Content: Team Members on Leave Today (col-span-1) */}
+          <div className="glass-panel rounded-3xl p-6 bg-slate-900/20 space-y-4 self-start">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <span>🌴</span> Team Members on Leave Today
+            </h3>
+            {teamMembersOnLeaveToday.length > 0 ? (
+              <div className="space-y-3">
+                {teamMembersOnLeaveToday.map((leave) => (
+                  <div key={leave._id} className="flex items-center justify-between p-3 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-white truncate">{leave.employee?.name || 'Employee'}</p>
+                      <p className="text-[10px] text-slate-500 font-semibold">{leave.employee?.employeeDetails?.designation || 'Staff'}</p>
+                      <p className="text-xs text-slate-400 mt-1">{leave.leaveType} Leave</p>
+                    </div>
+                    <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
+                      isLeaveActiveToday(leave.startDate, leave.endDate)
+                        ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                        : 'bg-indigo-500/10 text-brand-accent border border-indigo-500/20'
+                    }`}>
+                      {formatLeavePeriod(leave.startDate, leave.endDate)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center py-6 text-slate-500">
+                <CheckCircle2 className="w-8 h-8 text-emerald-500/30 mb-2" />
+                <p className="text-xs text-center text-slate-400">All team members are active today.</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

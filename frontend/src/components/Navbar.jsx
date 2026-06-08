@@ -72,7 +72,7 @@ const Navbar = ({ toggleSidebar }) => {
         {/* Mobile Hamburger toggle button */}
         <button
           onClick={toggleSidebar}
-          className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 lg:hidden focus:outline-none cursor-pointer"
+          className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 focus:outline-none cursor-pointer"
           aria-label="Open sidebar"
         >
           <Menu className="w-6 h-6" />

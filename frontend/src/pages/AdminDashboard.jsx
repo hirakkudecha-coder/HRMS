@@ -272,6 +272,67 @@ const AdminDashboard = () => {
     (emp.employeeDetails?.department || '').toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const isLeaveActiveToday = (startDateStr, endDateStr) => {
+    const today = new Date();
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const start = new Date(startDateStr);
+    const end = new Date(endDateStr);
+    const startZero = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+    return todayZero >= startZero && todayZero <= endZero;
+  };
+
+  const formatLeavePeriod = (startDateStr, endDateStr) => {
+    const today = new Date();
+    const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+    const start = new Date(startDateStr);
+    const end = new Date(endDateStr);
+    const startZero = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+    const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+
+    if (todayZero >= startZero && todayZero <= endZero) {
+      return 'On Leave Today';
+    }
+
+    const startOption = { month: 'short', day: 'numeric' };
+    const endOption = { month: 'short', day: 'numeric' };
+    if (start.getFullYear() !== today.getFullYear()) {
+      startOption.year = '2-digit';
+    }
+    const localStart = start.toLocaleDateString('en-US', startOption);
+    const localEnd = end.toLocaleDateString('en-US', endOption);
+    
+    return localStart === localEnd ? localStart : `${localStart} - ${localEnd}`;
+  };
+
+  const employeesOnLeaveToday = leaves
+    .filter(l => {
+      if (l.status !== 'Approved') return false;
+      const today = new Date();
+      const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      const end = new Date(l.endDate);
+      const endZero = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+      return endZero >= todayZero;
+    })
+    .sort((a, b) => {
+      const today = new Date();
+      const todayZero = new Date(today.getFullYear(), today.getMonth(), today.getDate());
+      
+      const startA = new Date(a.startDate);
+      const startZeroA = new Date(startA.getFullYear(), startA.getMonth(), startA.getDate());
+      
+      const startB = new Date(b.startDate);
+      const startZeroB = new Date(startB.getFullYear(), startB.getMonth(), startB.getDate());
+
+      const isActiveA = todayZero >= startZeroA;
+      const isActiveB = todayZero >= startZeroB;
+
+      if (isActiveA && !isActiveB) return -1;
+      if (!isActiveA && isActiveB) return 1;
+
+      return startZeroA - startZeroB;
+    });
+
   // ── Tab Config ────────────────────────────────────────────────────
   const tabs = [
     { id: 'Overview', icon: LayoutDashboard, label: 'Overview' },
@@ -430,32 +491,71 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          {/* Recent Leaves */}
-          <div className="glass-panel rounded-2xl p-6">
-            <div className="flex items-center gap-2 mb-5">
-              <CalendarDays className="w-5 h-5 text-amber-400" />
-              <h3 className="font-bold text-white">Recent Leave Requests</h3>
-            </div>
-            {overview.recentLeaves.length > 0 ? (
-              <div className="space-y-3">
-                {overview.recentLeaves.map(leave => (
-                  <div key={leave._id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center font-bold text-sm text-indigo-400">
-                        {leave.employee?.name?.charAt(0) || '?'}
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-white">{leave.employee?.name}</p>
-                        <p className="text-xs text-slate-400">{leave.leaveType} · {formatDate(leave.startDate)}</p>
-                      </div>
-                    </div>
-                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusBadge(leave.status)}`}>
-                      {leave.status}
-                    </span>
-                  </div>
-                ))}
+          {/* Leaves Summary Section */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Employees on Leave Today (col-span-1) */}
+            <div className="glass-panel rounded-2xl p-6 self-start">
+              <div className="flex items-center gap-2 mb-5">
+                <CalendarDays className="w-5 h-5 text-indigo-400" />
+                <h3 className="font-bold text-white">Employees on Leave Today</h3>
               </div>
-            ) : <p className="text-slate-500 text-sm">No recent leave activity.</p>}
+              {employeesOnLeaveToday.length > 0 ? (
+                <div className="space-y-3">
+                  {employeesOnLeaveToday.map(leave => (
+                    <div key={leave._id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{leave.employee?.name || 'Employee'}</p>
+                        <p className="text-[10px] text-slate-500 font-semibold truncate">
+                          {leave.employee?.employeeDetails?.designation || 'Staff'} 
+                          {leave.employee?.employeeDetails?.department ? ` · ${leave.employee.employeeDetails.department}` : ''}
+                        </p>
+                        <p className="text-xs text-slate-400 mt-1">{leave.leaveType} Leave</p>
+                      </div>
+                      <span className={`text-[10px] px-2.5 py-1 rounded-full font-bold uppercase tracking-wider ${
+                        isLeaveActiveToday(leave.startDate, leave.endDate)
+                          ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                          : 'bg-indigo-500/10 text-violet-400 border border-indigo-500/20'
+                      }`}>
+                        {formatLeavePeriod(leave.startDate, leave.endDate)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center py-6 text-slate-500">
+                  <CheckCircle2 className="w-8 h-8 text-emerald-500/30 mb-2" />
+                  <p className="text-xs text-center text-slate-400">All company employees are active today.</p>
+                </div>
+              )}
+            </div>
+
+            {/* Recent Leaves (col-span-2) */}
+            <div className="lg:col-span-2 glass-panel rounded-2xl p-6 self-start">
+              <div className="flex items-center gap-2 mb-5">
+                <CalendarDays className="w-5 h-5 text-amber-400" />
+                <h3 className="font-bold text-white">Recent Leave Requests</h3>
+              </div>
+              {overview.recentLeaves.length > 0 ? (
+                <div className="space-y-3">
+                  {overview.recentLeaves.map(leave => (
+                    <div key={leave._id} className="flex items-center justify-between p-3 rounded-xl bg-white/5 border border-white/5">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-indigo-500/10 flex items-center justify-center font-bold text-sm text-indigo-400">
+                          {leave.employee?.name?.charAt(0) || '?'}
+                        </div>
+                        <div>
+                          <p className="text-sm font-semibold text-white">{leave.employee?.name}</p>
+                          <p className="text-xs text-slate-400">{leave.leaveType} · {formatDate(leave.startDate)}</p>
+                        </div>
+                      </div>
+                      <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusBadge(leave.status)}`}>
+                        {leave.status}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              ) : <p className="text-slate-500 text-sm">No recent leave activity.</p>}
+            </div>
           </div>
         </div>
       )}

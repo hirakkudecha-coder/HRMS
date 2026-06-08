@@ -63,7 +63,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
 
       {/* Sidebar Core Panel */}
       <aside
-        className={`fixed top-0 bottom-0 left-0 z-50 flex flex-col w-64 border-r border-white/10 glass-panel bg-slate-950/80 transition-transform duration-300 ease-in-out lg:translate-x-0 ${
+        className={`fixed top-0 bottom-0 left-0 z-50 flex flex-col w-64 border-r border-white/10 glass-panel bg-slate-950/80 transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : '-translate-x-full'
         }`}
       >
