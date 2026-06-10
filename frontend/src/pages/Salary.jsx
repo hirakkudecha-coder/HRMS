@@ -22,6 +22,10 @@ const Salary = () => {
         setSlips(res.data.slips);
       }
     } catch (err) {
+      if (err.response?.status === 403) {
+        // Silently ignore 403 shift lockout error
+        return;
+      }
       console.error('Failed to load salary slips:', err.message);
       setError('Failed to fetch salary records from server.');
     } finally {

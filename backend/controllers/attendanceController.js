@@ -107,6 +107,16 @@ exports.checkOut = async (req, res) => {
       return res.status(400).json({ success: false, message: 'You have already checked out today!' });
     }
 
+    // Verify that the employee has logged and submitted their daily timesheet for today
+    const Timesheet = require('../models/Timesheet');
+    const timesheet = await Timesheet.findOne({ employee: employeeId, date: todayStr });
+    if (!timesheet || (timesheet.status !== 'Submitted' && timesheet.status !== 'Approved')) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Please log and submit your daily timesheet to your manager before checking out!' 
+      });
+    }
+
     const checkOutTime = new Date();
     attendance.checkOut = checkOutTime;
 

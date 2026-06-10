@@ -32,6 +32,12 @@ const Login = () => {
     } else if (role === 'manager') {
       setEmail('manager@apex.com');
       setPassword(savedPassword);
+    } else if (role === 'hr') {
+      setEmail('hr@apex.com');
+      setPassword(savedPassword);
+    } else if (role === 'finance') {
+      setEmail('finance@apex.com');
+      setPassword(savedPassword);
     } else if (role === 'admin') {
       setEmail('admin@apex.com');
       setPassword(savedPassword);
@@ -111,10 +117,10 @@ const Login = () => {
           <p className="text-xs text-slate-400 mb-6">Select your role to pre-fill credentials</p>
 
           {/* RBAC Role Switcher Tabs */}
-          <div className="flex p-1 bg-slate-950/60 rounded-2xl border border-white/5 mb-6 gap-1">
+          <div className="grid grid-cols-5 p-1 bg-slate-950/60 rounded-2xl border border-white/5 mb-6 gap-1">
             <button
               type="button"
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold tracking-wider transition-all duration-300 ${
+              className={`py-2 px-1 rounded-xl text-[10px] md:text-xs font-semibold tracking-wider transition-all duration-300 ${
                 activeTab === 'employee'
                   ? 'bg-brand-accent text-white shadow-lg shadow-brand-accent/25'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
@@ -125,7 +131,7 @@ const Login = () => {
             </button>
             <button
               type="button"
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold tracking-wider transition-all duration-300 ${
+              className={`py-2 px-1 rounded-xl text-[10px] md:text-xs font-semibold tracking-wider transition-all duration-300 ${
                 activeTab === 'manager'
                   ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-600/25'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
@@ -136,7 +142,29 @@ const Login = () => {
             </button>
             <button
               type="button"
-              className={`flex-1 py-2 px-3 rounded-xl text-xs font-semibold tracking-wider transition-all duration-300 ${
+              className={`py-2 px-1 rounded-xl text-[10px] md:text-xs font-semibold tracking-wider transition-all duration-300 ${
+                activeTab === 'hr'
+                  ? 'bg-emerald-600 text-white shadow-lg shadow-emerald-600/25'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+              }`}
+              onClick={() => handleTabChange('hr')}
+            >
+              HR
+            </button>
+            <button
+              type="button"
+              className={`py-2 px-1 rounded-xl text-[10px] md:text-xs font-semibold tracking-wider transition-all duration-300 ${
+                activeTab === 'finance'
+                  ? 'bg-amber-600 text-white shadow-lg shadow-amber-600/25'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'
+              }`}
+              onClick={() => handleTabChange('finance')}
+            >
+              Finance
+            </button>
+            <button
+              type="button"
+              className={`py-2 px-1 rounded-xl text-[10px] md:text-xs font-semibold tracking-wider transition-all duration-300 ${
                 activeTab === 'admin'
                   ? 'bg-violet-600 text-white shadow-lg shadow-violet-600/25'
                   : 'text-slate-400 hover:text-slate-200 hover:bg-white/5'

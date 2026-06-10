@@ -1,4 +1,3 @@
-// Import React, hooks, icons, and API client
 import React, { useState, useEffect, useContext } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
@@ -8,10 +7,8 @@ import {
   LayoutDashboard,
   Users,
   Clock,
-  ClipboardList,
   CalendarDays,
   Megaphone,
-  TrendingUp,
   CheckCircle2,
   XCircle,
   AlertCircle,
@@ -19,22 +16,20 @@ import {
   PlusCircle,
   Trash2,
   Pencil,
-  Send,
   X,
   UserPlus,
   ShieldCheck,
   Building2,
   Globe,
   Activity,
-  ListTodo,
   BadgeCheck,
   BarChart3,
   BellRing,
-  Loader2
+  Loader2,
+  FileSpreadsheet
 } from 'lucide-react';
 
 const AdminDashboard = () => {
-  const { user } = useContext(AuthContext);
 
   // Tab navigation via URL params
   const [searchParams, setSearchParams] = useSearchParams();
@@ -45,9 +40,10 @@ const AdminDashboard = () => {
   const [overview, setOverview] = useState(null);
   const [employees, setEmployees] = useState([]);
   const [leaves, setLeaves] = useState([]);
-  const [tasks, setTasks] = useState([]);
+  const [timesheets, setTimesheets] = useState([]);
   const [attendance, setAttendance] = useState({ today: [], history: [] });
   const [notices, setNotices] = useState([]);
+  const [expandedTimesheetId, setExpandedTimesheetId] = useState(null);
 
   // ── UI State ─────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
@@ -65,18 +61,32 @@ const AdminDashboard = () => {
   const [addForm, setAddForm] = useState({ name: '', email: '', password: '', role: 'employee', department: 'Engineering', designation: '', phone: '', region: 'India', employeeId: '' });
   const [editForm, setEditForm] = useState({ name: '', role: 'employee', department: '', designation: '', phone: '', region: 'India' });
 
-  const [taskForm, setTaskForm] = useState({ employeeId: '', title: '', description: '', priority: 'Medium', deadline: '' });
   const [noticeForm, setNoticeForm] = useState({ title: '', content: '', category: '', icon: '📢' });
+
+  // ── Banner Helper (Declared early to avoid use-before-define) ──────
+  const triggerBanner = (type, text) => {
+    setBanner({ type, text });
+    setTimeout(() => setBanner({ type: '', text: '' }), 5000);
+  };
+
+  const { shiftActive } = useContext(AuthContext);
 
   // ── Fetch Functions ───────────────────────────────────────────────
   const fetchAll = async () => {
     try {
       setLoading(true);
-      const [ovRes, empRes, leavesRes, tasksRes, attRes, noticesRes] = await Promise.all([
+      
+      // Verify active shift status first to avoid race conditions during check-out socket broadcasts
+      const checkRes = await api.get('/attendance/today');
+      if (!checkRes.data.success || !checkRes.data.checkedIn) {
+        return;
+      }
+
+      const [ovRes, empRes, leavesRes, timesheetsRes, attRes, noticesRes] = await Promise.all([
         api.get('/admin/overview'),
         api.get('/employee/department'),
         api.get('/leaves/department'),
-        api.get('/tasks/department'),
+        api.get('/timesheets/department'),
         api.get('/attendance/department'),
         api.get('/notices')
       ]);
@@ -84,15 +94,16 @@ const AdminDashboard = () => {
       if (ovRes.data.success) setOverview(ovRes.data);
       if (empRes.data.success) {
         setEmployees(empRes.data.employees);
-        if (empRes.data.employees.length > 0) {
-          setTaskForm(prev => ({ ...prev, employeeId: empRes.data.employees[0]._id }));
-        }
       }
       if (leavesRes.data.success) setLeaves(leavesRes.data.leaves);
-      if (tasksRes.data.success) setTasks(tasksRes.data.tasks);
+      if (timesheetsRes.data.success) setTimesheets(timesheetsRes.data.timesheets);
       if (attRes.data.success) setAttendance(attRes.data);
       if (noticesRes.data.success) setNotices(noticesRes.data.notices);
     } catch (err) {
+      if (err.response?.status === 403) {
+        // Silently skip locked/checked-out errors as the layout is transitioning
+        return;
+      }
       console.error('Admin Dashboard fetch error:', err.message);
       triggerBanner('danger', 'Error loading admin data. Please check the connection.');
     } finally {
@@ -100,24 +111,23 @@ const AdminDashboard = () => {
     }
   };
 
-  useEffect(() => { fetchAll(); }, []);
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fetchAll();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [shiftActive]);
 
   // ── Socket Real-time ──────────────────────────────────────────────
   useEffect(() => {
     const socket = io('http://localhost:5000');
     socket.on('leave_update', fetchAll);
-    socket.on('task_update', fetchAll);
+    socket.on('timesheet_update', fetchAll);
     socket.on('attendance_update', fetchAll);
     socket.on('employee_update', fetchAll);
     socket.on('notice_update', fetchAll);
     return () => socket.disconnect();
   }, []);
-
-  // ── Banner Helper ─────────────────────────────────────────────────
-  const triggerBanner = (type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner({ type: '', text: '' }), 5000);
-  };
 
   // ── Formatters ────────────────────────────────────────────────────
   const formatDate = (d) => new Date(d).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
@@ -126,18 +136,13 @@ const AdminDashboard = () => {
   const getStatusBadge = (status) => {
     switch (status) {
       case 'Approved': case 'Present': case 'Completed': return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-      case 'Rejected': case 'Late': case 'Half Day': return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+      case 'Rejected': return 'bg-rose-500/10 text-rose-400 border border-rose-500/20';
+      case 'Late': case 'Half Day': return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
       case 'Cancelled': return 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
       case 'In Progress': return 'bg-blue-500/10 text-blue-400 border border-blue-500/20';
       case 'To Do': return 'bg-violet-500/10 text-violet-400 border border-violet-500/20';
       default: return 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse';
     }
-  };
-
-  const getPriorityBadge = (p) => {
-    if (p === 'High') return 'bg-rose-500/10 text-rose-400 border border-rose-500/20';
-    if (p === 'Medium') return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
-    return 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
   };
 
   // ── Action Handlers ───────────────────────────────────────────────
@@ -221,21 +226,16 @@ const AdminDashboard = () => {
     }
   };
 
-  const handleDelegateTask = async (e) => {
-    e.preventDefault();
-    if (!taskForm.employeeId || !taskForm.title || !taskForm.description || !taskForm.deadline) {
-      triggerBanner('danger', 'Please fill all task fields.');
-      return;
-    }
-    setSubmitting(true);
+  const handleUpdateTimesheetStatus = async (timesheetId, status, rejectionReason = '') => {
     try {
-      await api.post('/tasks/delegate', taskForm);
-      triggerBanner('success', 'Task delegated successfully.');
-      setTaskForm(prev => ({ ...prev, title: '', description: '', deadline: '', priority: 'Medium' }));
-      fetchAll();
+      const res = await api.put(`/timesheets/${timesheetId}/status`, { status, rejectionReason });
+      if (res.data.success) {
+        triggerBanner('success', `Timesheet status updated successfully.`);
+        fetchAll();
+      }
     } catch (err) {
-      triggerBanner('danger', err.response?.data?.message || 'Failed to delegate task.');
-    } finally { setSubmitting(false); }
+      triggerBanner('danger', err.response?.data?.message || 'Failed to update timesheet status.');
+    }
   };
 
   const handleCreateNotice = async (e) => {
@@ -260,7 +260,7 @@ const AdminDashboard = () => {
       await api.delete(`/notices/${id}`);
       triggerBanner('success', 'Notice deleted.');
       fetchAll();
-    } catch (err) {
+    } catch {
       triggerBanner('danger', 'Failed to delete notice.');
     }
   };
@@ -338,7 +338,7 @@ const AdminDashboard = () => {
     { id: 'Overview', icon: LayoutDashboard, label: 'Overview' },
     { id: 'Employees', icon: Users, label: 'Employees' },
     { id: 'Leaves', icon: CalendarDays, label: 'Leaves' },
-    { id: 'Tasks', icon: ClipboardList, label: 'Tasks' },
+    { id: 'Timesheets', icon: FileSpreadsheet, label: 'Timesheets' },
     { id: 'Attendance', icon: Clock, label: 'Attendance' },
     { id: 'Notices', icon: Megaphone, label: 'Notices' },
   ];
@@ -414,7 +414,7 @@ const AdminDashboard = () => {
             {[
               { label: 'Total Employees', value: overview.stats.totalEmployees, icon: Users, color: 'indigo', sub: `+${overview.stats.totalManagers} managers` },
               { label: 'Pending Leaves', value: overview.stats.pendingLeaves, icon: CalendarDays, color: 'amber', sub: `${overview.stats.approvedLeaves} approved` },
-              { label: 'Tasks Completed', value: overview.stats.completedTasks, icon: CheckCircle2, color: 'emerald', sub: `of ${overview.stats.totalTasks} total` },
+              { label: 'Submitted Timesheets', value: overview.stats.submittedTimesheets, icon: FileSpreadsheet, color: 'emerald', sub: `of ${overview.stats.totalTimesheets} total` },
               { label: 'Present Today', value: overview.stats.presentToday, icon: Activity, color: 'violet', sub: `${overview.stats.checkedOutToday} checked out` },
             ].map(({ label, value, icon: Icon, color, sub }) => (
               <div key={label} className="glass-panel rounded-2xl p-5 hover:scale-[1.02] transition-transform duration-300">
@@ -459,17 +459,17 @@ const AdminDashboard = () => {
               </div>
             </div>
 
-            {/* Task Status Breakdown */}
+            {/* Timesheet Status Breakdown */}
             <div className="glass-panel rounded-2xl p-6">
               <div className="flex items-center gap-2 mb-5">
                 <BarChart3 className="w-5 h-5 text-indigo-400" />
-                <h3 className="font-bold text-white">Task Status Breakdown</h3>
+                <h3 className="font-bold text-white">Timesheet Status Breakdown</h3>
               </div>
               <div className="space-y-4">
                 {[
-                  { label: 'Completed', value: overview.stats.completedTasks, color: 'emerald', total: overview.stats.totalTasks },
-                  { label: 'In Progress', value: overview.stats.inProgressTasks, color: 'blue', total: overview.stats.totalTasks },
-                  { label: 'To Do', value: overview.stats.todoTasks, color: 'violet', total: overview.stats.totalTasks },
+                  { label: 'Approved', value: overview.stats.approvedTimesheets, color: 'emerald', total: overview.stats.totalTimesheets },
+                  { label: 'Submitted', value: overview.stats.submittedTimesheets, color: 'blue', total: overview.stats.totalTimesheets },
+                  { label: 'Draft', value: overview.stats.draftTimesheets, color: 'violet', total: overview.stats.totalTimesheets },
                 ].map(({ label, value, color, total }) => {
                   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
                   return (
@@ -769,106 +769,152 @@ const AdminDashboard = () => {
       )}
 
       {/* ══════════════════════════════════════════════════════════════
-          TAB: TASKS
+          TAB: TIMESHEETS
       ══════════════════════════════════════════════════════════════ */}
-      {activeTab === 'Tasks' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 animate-[fadeIn_0.4s_ease-out]">
-          {/* Delegate Task Form */}
-          <div className="glass-panel rounded-2xl p-6 self-start">
-            <div className="flex items-center gap-2 mb-6">
-              <ListTodo className="w-5 h-5 text-violet-400" />
-              <h3 className="font-bold text-white">Delegate New Task</h3>
-            </div>
-            <form onSubmit={handleDelegateTask} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Assign To</label>
-                <select className="glass-input cursor-pointer" value={taskForm.employeeId} onChange={e => setTaskForm(p => ({ ...p, employeeId: e.target.value }))} disabled={submitting}>
-                  {employees.map(emp => (
-                    <option key={emp._id} value={emp._id}>{emp.name} — {emp.employeeDetails?.department}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Task Title</label>
-                <input type="text" className="glass-input" placeholder="Enter task title..." value={taskForm.title} onChange={e => setTaskForm(p => ({ ...p, title: e.target.value }))} disabled={submitting} />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Description</label>
-                <textarea rows="3" className="glass-input resize-none" placeholder="Describe the task..." value={taskForm.description} onChange={e => setTaskForm(p => ({ ...p, description: e.target.value }))} disabled={submitting} />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Priority</label>
-                  <select className="glass-input cursor-pointer" value={taskForm.priority} onChange={e => setTaskForm(p => ({ ...p, priority: e.target.value }))} disabled={submitting}>
-                    <option value="High">High</option>
-                    <option value="Medium">Medium</option>
-                    <option value="Low">Low</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Deadline</label>
-                  <input type="date" className="glass-input" value={taskForm.deadline} onChange={e => setTaskForm(p => ({ ...p, deadline: e.target.value }))} disabled={submitting} />
-                </div>
-              </div>
-              <button type="submit" disabled={submitting} className="glass-btn w-full bg-violet-600 hover:bg-violet-500 shadow-violet-600/20 mt-2">
-                {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Send className="w-4 h-4" /><span>Delegate Task</span></>}
-              </button>
-            </form>
+      {activeTab === 'Timesheets' && (
+        <div className="glass-panel rounded-2xl overflow-hidden border border-white/5 animate-[fadeIn_0.4s_ease-out]">
+          <div className="p-5 border-b border-white/10 flex items-center gap-2">
+            <FileSpreadsheet className="w-5 h-5 text-violet-400" />
+            <h3 className="font-bold text-white">System Timesheets Directory</h3>
+            <span className="ml-auto text-xs px-2.5 py-1 rounded-lg bg-white/5 text-slate-400 font-medium">{timesheets.length} total</span>
           </div>
-
-          {/* Task List */}
-          <div className="lg:col-span-2 glass-panel rounded-2xl overflow-hidden self-start">
-            <div className="p-5 border-b border-white/10 flex items-center gap-2">
-              <ClipboardList className="w-5 h-5 text-violet-400" />
-              <h3 className="font-bold text-white">All System Tasks</h3>
-              <span className="ml-auto text-xs px-2.5 py-1 rounded-lg bg-white/5 text-slate-400 font-medium">{tasks.length} total</span>
-            </div>
+          {timesheets.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full text-left border-collapse">
                 <thead>
                   <tr className="bg-slate-950/60 border-b border-white/5 text-xs text-slate-400 font-semibold tracking-wider uppercase">
-                    <th className="px-5 py-4">Task</th>
-                    <th className="px-5 py-4">Assigned To</th>
-                    <th className="px-5 py-4">Priority</th>
-                    <th className="px-5 py-4">Deadline</th>
-                    <th className="px-5 py-4">Status</th>
+                    <th className="px-6 py-4">Employee</th>
+                    <th className="px-6 py-4">Logged Date</th>
+                    <th className="px-6 py-4 text-center">Total Hours</th>
+                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-white/5 text-sm text-slate-300">
-                  {tasks.length > 0 ? tasks.map(task => (
-                    <tr key={task._id} className="hover:bg-white/5 transition-colors">
-                      <td className="px-5 py-4">
-                        <p className="font-semibold text-white max-w-[160px] truncate" title={task.title}>{task.title}</p>
-                        <p className="text-xs text-slate-500 max-w-[160px] truncate" title={task.description}>{task.description}</p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <p className="text-sm font-medium">{task.employee?.name}</p>
-                        <p className="text-xs text-slate-500">{task.employee?.employeeDetails?.department}</p>
-                      </td>
-                      <td className="px-5 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getPriorityBadge(task.priority)}`}>
-                          {task.priority}
-                        </span>
-                      </td>
-                      <td className="px-5 py-4 text-xs text-slate-400">{formatDate(task.deadline)}</td>
-                      <td className="px-5 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusBadge(task.status)}`}>
-                          {task.status}
-                        </span>
-                      </td>
-                    </tr>
-                  )) : (
-                    <tr>
-                      <td colSpan="5" className="px-5 py-16 text-center text-slate-500">
-                        <ClipboardList className="w-10 h-10 mx-auto mb-2 text-slate-700" />
-                        <p className="text-sm font-medium">No tasks assigned yet.</p>
-                      </td>
-                    </tr>
-                  )}
+                  {timesheets.map((ts) => {
+                    const isExpanded = expandedTimesheetId === ts._id;
+
+                    return (
+                      <React.Fragment key={ts._id}>
+                        <tr className="hover:bg-white/5 transition-colors">
+                          <td className="px-6 py-4 flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center font-bold text-violet-400 overflow-hidden text-xs">
+                              {ts.employee?.employeeDetails?.profileImage ? (
+                                <img
+                                  src={`http://localhost:5000${ts.employee.employeeDetails.profileImage}`}
+                                  alt={ts.employee?.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { e.target.style.display = 'none'; }}
+                                />
+                              ) : (
+                                ts.employee?.name?.charAt(0).toUpperCase() || 'U'
+                              )}
+                            </div>
+                            <div>
+                              <span className="block font-bold text-white leading-none text-xs">{ts.employee?.name}</span>
+                              <span className="text-[9px] text-slate-500 mt-1 block">{ts.employee?.employeeDetails?.department || 'General'} · {ts.employee?.employeeDetails?.region}</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-white">
+                            {formatDate(ts.date)}
+                          </td>
+                          <td className="px-6 py-4 text-center font-bold text-white">
+                            {ts.totalHours} hrs
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusBadge(ts.status)}`}>
+                              {ts.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2">
+                              <button
+                                onClick={() => setExpandedTimesheetId(isExpanded ? null : ts._id)}
+                                className="p-1.5 rounded-lg text-violet-400 bg-violet-500/10 hover:bg-violet-500/20 text-xs font-semibold cursor-pointer active:scale-95 transition-all"
+                              >
+                                {isExpanded ? 'Hide Details' : 'View Details'}
+                              </button>
+                              
+                              {ts.status === 'Submitted' && (
+                                <>
+                                  <button
+                                    onClick={() => handleUpdateTimesheetStatus(ts._id, 'Approved')}
+                                    className="p-1.5 rounded-lg text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 cursor-pointer active:scale-95 transition-all flex items-center gap-1 font-semibold text-xs border border-emerald-500/20"
+                                    title="Approve Timesheet"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const reason = window.prompt('Please enter a reason for rejecting this timesheet:');
+                                      if (reason === null) return;
+                                      if (!reason.trim()) {
+                                        alert('Rejection reason is required.');
+                                        return;
+                                      }
+                                      handleUpdateTimesheetStatus(ts._id, 'Rejected', reason);
+                                    }}
+                                    className="p-1.5 rounded-lg text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 cursor-pointer active:scale-95 transition-all flex items-center gap-1 font-semibold text-xs border border-rose-500/20"
+                                    title="Reject Timesheet"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Expandable Daily Breakdown */}
+                        {isExpanded && (
+                          <tr className="bg-slate-950/40">
+                            <td colSpan="5" className="px-6 py-4">
+                              <div className="p-4 rounded-2xl border border-white/5 bg-slate-950/60 space-y-4">
+                                <div className="flex justify-between items-center pb-2 border-b border-white/10">
+                                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Daily Breakdown</h4>
+                                  <span className="text-xs text-slate-300 font-bold">Total: {ts.totalHours} hrs</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                      <tr className="text-slate-500 border-b border-white/5 uppercase font-semibold text-[10px] tracking-wider font-semibold">
+                                        <th className="pb-2 w-1/3">Project / Client</th>
+                                        <th className="pb-2 w-1/2">Activity Description</th>
+                                        <th className="pb-2 text-right">Hours Logged</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 text-slate-300">
+                                      {ts.entries.map((entry, idx) => (
+                                        <tr key={idx}>
+                                          <td className="py-2.5 font-bold text-white">{entry.project}</td>
+                                          <td className="py-2.5 text-slate-400" title={entry.description}>{entry.description}</td>
+                                          <td className="py-2.5 text-right font-bold text-white">{entry.hours} hrs</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                {ts.status === 'Rejected' && ts.rejectionReason && (
+                                  <div className="text-xs text-rose-400 bg-rose-500/10 p-3 rounded-xl border border-rose-500/20">
+                                    <span className="font-bold">Rejection Feedback:</span> "{ts.rejectionReason}"
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </React.Fragment>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
-          </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+              <FileSpreadsheet className="w-12 h-12 text-slate-700 mb-2 animate-pulse" />
+              <p className="text-sm font-medium">No system timesheets logged yet.</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -1092,6 +1138,9 @@ const AdminDashboard = () => {
                   <select className="glass-input cursor-pointer" value={addForm.role} onChange={e => setAddForm(p => ({ ...p, role: e.target.value }))}>
                     <option value="employee">Employee</option>
                     <option value="manager">Manager</option>
+                    <option value="hr">HR</option>
+                    <option value="finance">Finance</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
                 <div>
@@ -1157,6 +1206,9 @@ const AdminDashboard = () => {
                   <select className="glass-input cursor-pointer" value={editForm.role} onChange={e => setEditForm(p => ({ ...p, role: e.target.value }))}>
                     <option value="employee">Employee</option>
                     <option value="manager">Manager</option>
+                    <option value="hr">HR</option>
+                    <option value="finance">Finance</option>
+                    <option value="admin">Admin</option>
                   </select>
                 </div>
                 <div>

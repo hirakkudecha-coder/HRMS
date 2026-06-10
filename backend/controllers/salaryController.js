@@ -35,8 +35,8 @@ exports.downloadPayslip = async (req, res) => {
       return res.status(404).json({ success: false, message: 'Payslip record not found' });
     }
 
-    // Verify ownership: the salary record must belong to the requesting employee
-    if (salary.employee.toString() !== req.user.id) {
+    // Verify ownership: the salary record must belong to the requesting employee, or the requester must be admin/finance
+    if (salary.employee.toString() !== req.user.id && req.user.role !== 'admin' && req.user.role !== 'finance') {
       return res.status(403).json({ success: false, message: 'Not authorized to download this payslip' });
     }
 

@@ -56,5 +56,48 @@ const authorize = (...roles) => {
   };
 };
 
-// Export both helper middlewares
-module.exports = { protect, authorize };
+// Region timezone lookup mapping
+const regionTimeZones = {
+  'India': 'Asia/Kolkata',
+  'USA': 'America/New_York',
+  'UK': 'Europe/London',
+  'Russia': 'Europe/Moscow'
+};
+
+// Helper function to get today's date in local YYYY-MM-DD format based on employee time zone
+const getTodayDateString = (timeZone = 'Asia/Kolkata') => {
+  const options = { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' };
+  const formatter = new Intl.DateTimeFormat('en-US', options);
+  const [{ value: month },,{ value: day },,{ value: year }] = formatter.formatToParts(new Date());
+  return `${year}-${month}-${day}`;
+};
+
+// Middleware to verify if the user has started their shift today
+const requireActiveShift = async (req, res, next) => {
+  try {
+    if (!req.user) {
+      return res.status(401).json({ success: false, message: 'Not authorized, please log in' });
+    }
+
+    const Attendance = require('../models/Attendance');
+    const timeZone = regionTimeZones[req.user.employeeDetails?.region] || 'Asia/Kolkata';
+    const todayStr = getTodayDateString(timeZone);
+
+    const record = await Attendance.findOne({ employee: req.user.id, date: todayStr });
+
+    if (!record || !record.checkIn) {
+      return res.status(403).json({
+        success: false,
+        message: 'Access Denied: You must check in for your daily shift first to access this resource!'
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error('requireActiveShift Middleware Error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error during shift validation' });
+  }
+};
+
+// Export all middlewares
+module.exports = { protect, authorize, requireActiveShift };

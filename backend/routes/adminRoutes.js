@@ -11,13 +11,17 @@ const {
 } = require('../controllers/adminController');
 
 // Import Auth protection and Role authorization middlewares
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, authorize, requireActiveShift } = require('../middleware/authMiddleware');
 
-// All admin routes require authentication AND admin role
-router.get('/overview', protect, authorize('admin'), getAdminOverview);
-router.post('/employees', protect, authorize('admin'), createEmployee);
-router.put('/employees/:id', protect, authorize('admin'), updateEmployee);
-router.delete('/employees/:id', protect, authorize('admin'), deleteEmployee);
+// All admin routes require authentication, admin role, and active shift check-in
+router.use(protect);
+router.use(authorize('admin', 'hr'));
+router.use(requireActiveShift);
+
+router.get('/overview', getAdminOverview);
+router.post('/employees', createEmployee);
+router.put('/employees/:id', updateEmployee);
+router.delete('/employees/:id', deleteEmployee);
 
 // Export router
 module.exports = router;

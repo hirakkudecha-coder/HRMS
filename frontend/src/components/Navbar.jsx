@@ -1,5 +1,4 @@
-// Import React, routing, hooks, and context
-import React, { useContext, useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
 import { Menu, LogOut, Calendar } from 'lucide-react';
@@ -72,7 +71,7 @@ const Navbar = ({ toggleSidebar }) => {
         {/* Mobile Hamburger toggle button */}
         <button
           onClick={toggleSidebar}
-          className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 focus:outline-none cursor-pointer"
+          className="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-white/5 focus:outline-none cursor-pointer lg:hidden"
           aria-label="Open sidebar"
         >
           <Menu className="w-6 h-6" />

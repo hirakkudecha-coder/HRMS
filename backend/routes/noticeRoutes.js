@@ -10,8 +10,8 @@ const { protect, authorize } = require('../middleware/authMiddleware');
 
 // All notice routes require authentication
 router.get('/', protect, getNotices);                            // Get notices list (all roles)
-router.post('/', protect, authorize('admin'), createNotice);    // Create notice (admin only)
-router.delete('/:id', protect, authorize('admin'), deleteNotice); // Delete notice (admin only)
+router.post('/', protect, authorize('admin', 'hr'), createNotice);    // Create notice (admin and hr)
+router.delete('/:id', protect, authorize('admin', 'hr'), deleteNotice); // Delete notice (admin and hr)
 
 // Export router
 module.exports = router;

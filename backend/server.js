@@ -13,7 +13,7 @@ const connectDB = require('./config/db');
 const User = require('./models/User');
 const Attendance = require('./models/Attendance');
 const Leave = require('./models/Leave');
-const Task = require('./models/Task');
+const Timesheet = require('./models/Timesheet');
 const Salary = require('./models/Salary');
 const Notice = require('./models/Notice');
 const Holiday = require('./models/Holiday');
@@ -23,7 +23,7 @@ const authRoutes = require('./routes/authRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
-const taskRoutes = require('./routes/taskRoutes');
+const timesheetRoutes = require('./routes/timesheetRoutes');
 const salaryRoutes = require('./routes/salaryRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const noticeRoutes = require('./routes/noticeRoutes');
@@ -55,7 +55,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/employee', employeeRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leaves', leaveRoutes);
-app.use('/api/tasks', taskRoutes);
+app.use('/api/timesheets', timesheetRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/notices', noticeRoutes);
@@ -114,7 +114,7 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
         Notice.deleteMany({}),
         Holiday.deleteMany({})
@@ -129,7 +129,7 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
         Notice.deleteMany({}),
         Holiday.deleteMany({})
@@ -144,7 +144,7 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
         Notice.deleteMany({}),
         Holiday.deleteMany({})
@@ -165,7 +165,7 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
         Notice.deleteMany({}),
         Holiday.deleteMany({})
@@ -180,7 +180,7 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
         Notice.deleteMany({}),
         Holiday.deleteMany({})
@@ -200,7 +200,7 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
         Notice.deleteMany({}),
         Holiday.deleteMany({})
@@ -261,10 +261,170 @@ const seedDemoData = async () => {
       console.log('- Demo Indian & Public Holidays Seeded');
     }
 
-    // Check if the User collection has records
-    const userCount = await User.countDocuments();
-    if (userCount > 0) {
-      console.log('Database already initialized. Skipping auto-seeding.');
+    // Ensure Demo HR and Demo Finance accounts exist (handles incremental seeding on update)
+    const hrExists = await User.findOne({ email: 'hr@apex.com' });
+    if (!hrExists) {
+      console.log('Demo HR account missing. Seeding hr@apex.com...');
+      await User.create({
+        name: 'Sarah Jenkins',
+        email: 'hr@apex.com',
+        password: 'Password@123',
+        role: 'hr',
+        employeeDetails: {
+          employeeId: 'EMP8844',
+          department: 'Human Resources',
+          designation: 'HR Generalist',
+          phone: '+91 98765-11111',
+          skills: ['Onboarding', 'Conflict Resolution', 'Employee Engagement', 'HR Policies'],
+          region: 'India',
+          joiningDate: new Date('2024-02-01')
+        }
+      });
+    }
+
+    const financeExists = await User.findOne({ email: 'finance@apex.com' });
+    if (!financeExists) {
+      console.log('Demo Finance account missing. Seeding finance@apex.com...');
+      await User.create({
+        name: 'David Vance',
+        email: 'finance@apex.com',
+        password: 'Password@123',
+        role: 'finance',
+        employeeDetails: {
+          employeeId: 'EMP8845',
+          department: 'Finance',
+          designation: 'Payroll Specialist',
+          phone: '+91 98765-22222',
+          skills: ['Payroll Management', 'Taxation', 'TDS', 'Financial Auditing'],
+          region: 'India',
+          joiningDate: new Date('2024-03-01')
+        }
+      });
+    }
+
+    // Helper to seed compliant salaries for all 6 users
+    const seedCompliantSalaries = async () => {
+      const dynamicMonths = getLastThreeMonths();
+      const salaryConfig = [
+        {
+          email: 'manager@apex.com',
+          gross: 150000,
+          basic: 75000,
+          hra: 37500,
+          education: 2000,
+          nps: 7500,
+          lunch: 3000,
+          lta: 5000,
+          shift: 5000,
+          special: 15000
+        },
+        {
+          email: 'admin@apex.com',
+          gross: 120000,
+          basic: 60000,
+          hra: 30000,
+          education: 2000,
+          nps: 6000,
+          lunch: 3000,
+          lta: 4000,
+          shift: 4000,
+          special: 11000
+        },
+        {
+          email: 'employee@apex.com',
+          gross: 100000,
+          basic: 50000,
+          hra: 25000,
+          education: 2000,
+          nps: 5000,
+          lunch: 2000,
+          lta: 3000,
+          shift: 3000,
+          special: 10000
+        },
+        {
+          email: 'amit@apex.com',
+          gross: 80000,
+          basic: 40000,
+          hra: 20000,
+          education: 1000,
+          nps: 4000,
+          lunch: 2000,
+          lta: 2500,
+          shift: 2000,
+          special: 8500
+        },
+        {
+          email: 'finance@apex.com',
+          gross: 60000,
+          basic: 30000,
+          hra: 15000,
+          education: 1000,
+          nps: 3000,
+          lunch: 1500,
+          lta: 2000,
+          shift: 1500,
+          special: 6000
+        },
+        {
+          email: 'hr@apex.com',
+          gross: 50000,
+          basic: 25000,
+          hra: 12500,
+          education: 1000,
+          nps: 2500,
+          lunch: 1500,
+          lta: 2000,
+          shift: 1500,
+          special: 4000
+        }
+      ];
+
+      for (const config of salaryConfig) {
+        const user = await User.findOne({ email: config.email });
+        if (user) {
+          // Delete any existing salary records for this user to ensure fresh compliant data
+          await Salary.deleteMany({ employee: user._id });
+          
+          // Create 3 compliant salary records
+          const records = dynamicMonths.map(m => {
+            const pfVal = Math.round(config.basic * 0.12);
+            const ptVal = 200;
+            const grossDeductionsVal = pfVal + ptVal;
+            const netSalaryVal = config.gross - grossDeductionsVal;
+            
+            return {
+              employee: user._id,
+              month: m.month,
+              basicSalary: config.basic,
+              hra: config.hra,
+              educationAllowance: config.education,
+              npsAdhocPay: config.nps,
+              lunchAllowance: config.lunch,
+              monthlyLTA: config.lta,
+              shiftAllowance: config.shift,
+              adhocAllowance: config.special,
+              grossEarnings: config.gross,
+              pf: pfVal,
+              professionalTax: ptVal,
+              grossDeductions: grossDeductionsVal,
+              netSalary: netSalaryVal,
+              paidDays: m.paidDays,
+              paymentStatus: 'Paid',
+              paymentDate: m.paymentDate
+            };
+          });
+          await Salary.insertMany(records);
+          console.log(`- Seeded compliant salaries for ${config.email}`);
+        }
+      }
+    };
+
+    // Check if the primary Admin account exists to determine if we skip main seeding
+    const adminExistsAfter = await User.findOne({ email: 'admin@apex.com' });
+    if (adminExistsAfter) {
+      console.log('Database already initialized. Re-seeding compliant salaries and skipping full auto-seeding.');
+      await seedCompliantSalaries();
       return;
     }
 
@@ -339,6 +499,42 @@ const seedDemoData = async () => {
       }
     });
     console.log('- Demo India Employee Seeded: amit@apex.com');
+
+    // 5.2.3. Create Demo HR (HR Generalist)
+    const hr = await User.create({
+      name: 'Sarah Jenkins',
+      email: 'hr@apex.com',
+      password: 'Password@123',
+      role: 'hr',
+      employeeDetails: {
+        employeeId: 'EMP8844',
+        department: 'Human Resources',
+        designation: 'HR Generalist',
+        phone: '+91 98765-11111',
+        skills: ['Onboarding', 'Conflict Resolution', 'Employee Engagement', 'HR Policies'],
+        region: 'India',
+        joiningDate: new Date('2024-02-01')
+      }
+    });
+    console.log('- Demo HR Seeded: hr@apex.com');
+
+    // 5.2.4. Create Demo Finance (Payroll Specialist)
+    const finance = await User.create({
+      name: 'David Vance',
+      email: 'finance@apex.com',
+      password: 'Password@123',
+      role: 'finance',
+      employeeDetails: {
+        employeeId: 'EMP8845',
+        department: 'Finance',
+        designation: 'Payroll Specialist',
+        phone: '+91 98765-22222',
+        skills: ['Payroll Management', 'Taxation', 'TDS', 'Financial Auditing'],
+        region: 'India',
+        joiningDate: new Date('2024-03-01')
+      }
+    });
+    console.log('- Demo Finance Seeded: finance@apex.com');
 
     // 5.3. Seed Attendance History (Past 5 days for the Demo Employee)
     const attendanceRecords = [
@@ -476,331 +672,60 @@ const seedDemoData = async () => {
     await Leave.insertMany(leaveRecordsIndia);
     console.log('- Demo India Employee Leave History Seeded');
 
-    // 5.5. Seed Task Assignments
-    const taskRecords = [
-      {
-        employee: employee._id,
-        title: 'Refactor Authentication Layout',
-        description: 'Update the styling of the login cards to match the new dark glassmorphic layout standard.',
-        priority: 'High',
-        status: 'Completed',
-        deadline: new Date('2026-05-25')
-      },
-      {
-        employee: employee._id,
-        title: 'Integrate Dynamic Payslip Generator',
-        description: 'Connect the frontend salary details slip page to the new backend PDFKit stream download endpoint.',
-        priority: 'High',
-        status: 'In Progress',
-        deadline: new Date('2026-05-30')
-      },
-      {
-        employee: employee._id,
-        title: 'Write Jest API Route Tests',
-        description: 'Implement unit testing suites for user auth logins, checking file upload exceptions, and token protections.',
-        priority: 'Medium',
-        status: 'To Do',
-        deadline: new Date('2026-06-08')
-      }
-    ];
-    await Task.insertMany(taskRecords);
-    console.log('- Demo Tasks Seeded');
+    // 5.5. Seed Timesheet Assignments
+    const getLocalDateString = (offsetDays = 0) => {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    const todayStr = getLocalDateString(0);
+    const yesterdayStr = getLocalDateString(-1);
 
-    // Seed Task Assignments for India Employee (Amit Patel)
-    const taskRecordsIndia = [
+    const timesheetRecords = [
       {
-        employee: employeeIndia._id,
-        title: 'Implement Spring Boot Security',
-        description: 'Secure all microservices communication channels using OAuth2 and JWT authorizations.',
-        priority: 'High',
-        status: 'Completed',
-        deadline: new Date('2026-05-24')
+        employee: employee._id,
+        date: yesterdayStr,
+        entries: [
+          {
+            project: 'React Dashboard UI',
+            description: 'Refactored employee authentication and dashboard layouts with glassmorphic cards.',
+            hours: 8
+          }
+        ],
+        status: 'Approved'
       },
       {
         employee: employeeIndia._id,
-        title: 'Optimize Database Query Indexes',
-        description: 'Improve search response speed for historical employee attendance lists by analyzing profiling indexes.',
-        priority: 'High',
-        status: 'In Progress',
-        deadline: new Date('2026-05-29')
+        date: yesterdayStr,
+        entries: [
+          {
+            project: 'Microservices Security',
+            description: 'Implemented Spring Boot microservices OAuth2 and JWT authorization layers.',
+            hours: 8
+          }
+        ],
+        status: 'Approved'
       },
       {
         employee: employeeIndia._id,
-        title: 'Write API documentation Swagger specs',
-        description: 'Generate complete API structure specifications inside Swagger / OpenAPI for partner integrations.',
-        priority: 'Low',
-        status: 'To Do',
-        deadline: new Date('2026-06-12')
+        date: todayStr,
+        entries: [
+          {
+            project: 'Database Optimization',
+            description: 'Indexed MongoDB database collection properties for attendance record queries.',
+            hours: 4
+          }
+        ],
+        status: 'Draft'
       }
     ];
-    await Task.insertMany(taskRecordsIndia);
-    console.log('- Demo India Employee Tasks Seeded');
+    await Timesheet.insertMany(timesheetRecords);
+    console.log('- Demo Timesheets Seeded');
 
-    // 5.6. Seed Salary Records (Past 3 months of payslips in INR with all Pay Heads)
-    const dynamicMonths = getLastThreeMonths();
-
-    const salaryRecords = [
-      {
-        employee: employee._id,
-        month: dynamicMonths[2].month,
-        basicSalary: 60000,
-        hra: 30000,
-        adhocAllowance: 36000,
-        educationAllowance: 2000,
-        npsAdhocPay: 6000,
-        lunchAllowance: 3000,
-        monthlyLTA: 8000,
-        shiftAllowance: 5000,
-        grossEarnings: 150000,
-        pf: 7200,
-        professionalTax: 200,
-        grossDeductions: 7400,
-        netSalary: 142600,
-        paidDays: dynamicMonths[2].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[2].paymentDate
-      },
-      {
-        employee: employee._id,
-        month: dynamicMonths[1].month,
-        basicSalary: 60000,
-        hra: 30000,
-        adhocAllowance: 36000,
-        educationAllowance: 2000,
-        npsAdhocPay: 6000,
-        lunchAllowance: 3000,
-        monthlyLTA: 8000,
-        shiftAllowance: 5000,
-        grossEarnings: 150000,
-        pf: 7200,
-        professionalTax: 200,
-        grossDeductions: 7400,
-        netSalary: 142600,
-        paidDays: dynamicMonths[1].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[1].paymentDate
-      },
-      {
-        employee: employee._id,
-        month: dynamicMonths[0].month,
-        basicSalary: 60000,
-        hra: 30000,
-        adhocAllowance: 36000,
-        educationAllowance: 2000,
-        npsAdhocPay: 6000,
-        lunchAllowance: 3000,
-        monthlyLTA: 8000,
-        shiftAllowance: 5000,
-        grossEarnings: 150000,
-        pf: 7200,
-        professionalTax: 200,
-        grossDeductions: 7400,
-        netSalary: 142600,
-        paidDays: dynamicMonths[0].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[0].paymentDate
-      }
-    ];
-    await Salary.insertMany(salaryRecords);
-    console.log('- Demo Salary Slip History Seeded');
-
-    // Seed Salary Records for the India Employee (Amit Patel)
-    const salaryRecordsIndia = [
-      {
-        employee: employeeIndia._id,
-        month: dynamicMonths[2].month,
-        basicSalary: 40000,
-        hra: 20000,
-        adhocAllowance: 20000,
-        educationAllowance: 2000,
-        npsAdhocPay: 4000,
-        lunchAllowance: 2000,
-        monthlyLTA: 5000,
-        shiftAllowance: 2000,
-        grossEarnings: 95000,
-        pf: 4800,
-        professionalTax: 200,
-        grossDeductions: 5000,
-        netSalary: 90000,
-        paidDays: dynamicMonths[2].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[2].paymentDate
-      },
-      {
-        employee: employeeIndia._id,
-        month: dynamicMonths[1].month,
-        basicSalary: 40000,
-        hra: 20000,
-        adhocAllowance: 20000,
-        educationAllowance: 2000,
-        npsAdhocPay: 4000,
-        lunchAllowance: 2000,
-        monthlyLTA: 5000,
-        shiftAllowance: 2000,
-        grossEarnings: 95000,
-        pf: 4800,
-        professionalTax: 200,
-        grossDeductions: 5000,
-        netSalary: 90000,
-        paidDays: dynamicMonths[1].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[1].paymentDate
-      },
-      {
-        employee: employeeIndia._id,
-        month: dynamicMonths[0].month,
-        basicSalary: 40000,
-        hra: 20000,
-        adhocAllowance: 20000,
-        educationAllowance: 2000,
-        npsAdhocPay: 4000,
-        lunchAllowance: 2000,
-        monthlyLTA: 5000,
-        shiftAllowance: 2000,
-        grossEarnings: 95000,
-        pf: 4800,
-        professionalTax: 200,
-        grossDeductions: 5000,
-        netSalary: 90000,
-        paidDays: dynamicMonths[0].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[0].paymentDate
-      }
-    ];
-    await Salary.insertMany(salaryRecordsIndia);
-    console.log('- Demo India Employee Salary Slip History Seeded');
-
-    // Seed salary records for the Manager (Richard Roe)
-    const managerSalaryRecords = [
-      {
-        employee: manager._id,
-        month: dynamicMonths[2].month,
-        basicSalary: 100000,
-        hra: 50000,
-        adhocAllowance: 40000,
-        educationAllowance: 5000,
-        npsAdhocPay: 10000,
-        lunchAllowance: 5000,
-        monthlyLTA: 10000,
-        shiftAllowance: 0,
-        grossEarnings: 220000,
-        pf: 12000,
-        professionalTax: 200,
-        grossDeductions: 12200,
-        netSalary: 207800,
-        paidDays: dynamicMonths[2].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[2].paymentDate
-      },
-      {
-        employee: manager._id,
-        month: dynamicMonths[1].month,
-        basicSalary: 100000,
-        hra: 50000,
-        adhocAllowance: 40000,
-        educationAllowance: 5000,
-        npsAdhocPay: 10000,
-        lunchAllowance: 5000,
-        monthlyLTA: 10000,
-        shiftAllowance: 0,
-        grossEarnings: 220000,
-        pf: 12000,
-        professionalTax: 200,
-        grossDeductions: 12200,
-        netSalary: 207800,
-        paidDays: dynamicMonths[1].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[1].paymentDate
-      },
-      {
-        employee: manager._id,
-        month: dynamicMonths[0].month,
-        basicSalary: 100000,
-        hra: 50000,
-        adhocAllowance: 40000,
-        educationAllowance: 5000,
-        npsAdhocPay: 10000,
-        lunchAllowance: 5000,
-        monthlyLTA: 10000,
-        shiftAllowance: 0,
-        grossEarnings: 220000,
-        pf: 12000,
-        professionalTax: 200,
-        grossDeductions: 12200,
-        netSalary: 207800,
-        paidDays: dynamicMonths[0].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[0].paymentDate
-      }
-    ];
-    await Salary.insertMany(managerSalaryRecords);
-    console.log('- Demo Manager Salary Slip History Seeded');
-
-    // Seed salary records for the Admin (Manager Admin)
-    const adminSalaryRecords = [
-      {
-        employee: admin._id,
-        month: dynamicMonths[2].month,
-        basicSalary: 120000,
-        hra: 60000,
-        adhocAllowance: 50000,
-        educationAllowance: 8000,
-        npsAdhocPay: 15000,
-        lunchAllowance: 8000,
-        monthlyLTA: 15000,
-        shiftAllowance: 0,
-        grossEarnings: 276000,
-        pf: 14400,
-        professionalTax: 200,
-        grossDeductions: 14600,
-        netSalary: 261400,
-        paidDays: dynamicMonths[2].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[2].paymentDate
-      },
-      {
-        employee: admin._id,
-        month: dynamicMonths[1].month,
-        basicSalary: 120000,
-        hra: 60000,
-        adhocAllowance: 50000,
-        educationAllowance: 8000,
-        npsAdhocPay: 15000,
-        lunchAllowance: 8000,
-        monthlyLTA: 15000,
-        shiftAllowance: 0,
-        grossEarnings: 276000,
-        pf: 14400,
-        professionalTax: 200,
-        grossDeductions: 14600,
-        netSalary: 261400,
-        paidDays: dynamicMonths[1].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[1].paymentDate
-      },
-      {
-        employee: admin._id,
-        month: dynamicMonths[0].month,
-        basicSalary: 120000,
-        hra: 60000,
-        adhocAllowance: 50000,
-        educationAllowance: 8000,
-        npsAdhocPay: 15000,
-        lunchAllowance: 8000,
-        monthlyLTA: 15000,
-        shiftAllowance: 0,
-        grossEarnings: 276000,
-        pf: 14400,
-        professionalTax: 200,
-        grossDeductions: 14600,
-        netSalary: 261400,
-        paidDays: dynamicMonths[0].paidDays,
-        paymentStatus: 'Paid',
-        paymentDate: dynamicMonths[0].paymentDate
-      }
-    ];
-    await Salary.insertMany(adminSalaryRecords);
-    console.log('- Demo Admin Salary Slip History Seeded');
+    await seedCompliantSalaries();
 
     console.log('Database auto-seeding successfully completed! App is ready.');
   } catch (err) {

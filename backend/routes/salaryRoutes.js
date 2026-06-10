@@ -9,11 +9,13 @@ const {
 } = require('../controllers/salaryController');
 
 // Import Auth protection middleware
-const { protect } = require('../middleware/authMiddleware');
+const { protect, requireActiveShift } = require('../middleware/authMiddleware');
 
-// All salary routes require authentication
-router.get('/', protect, getSalarySlips);             // Get payslips history list
-router.get('/:id/download', protect, downloadPayslip); // Download PDF file
+// All salary routes require authentication (exempt from shift blocker to allow viewing/downloading payslips)
+router.use(protect);
+
+router.get('/', getSalarySlips);             // Get payslips history list
+router.get('/:id/download', downloadPayslip); // Download PDF file
 
 // Export router
 module.exports = router;

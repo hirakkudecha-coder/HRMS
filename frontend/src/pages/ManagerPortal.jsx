@@ -1,5 +1,5 @@
-// Import React, hooks, icons, and API client
-import React, { useState, useEffect, useContext } from 'react';
+// Import hooks, icons, and API client
+import { useState, useEffect, useContext, Fragment } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { io } from 'socket.io-client';
 import { AuthContext } from '../context/AuthContext';
@@ -7,21 +7,16 @@ import api from '../services/api';
 import {
   Users,
   Clock,
-  ClipboardList,
   CalendarDays,
   CheckCircle,
   XCircle,
   AlertCircle,
-  Send,
   UserCheck,
-  CheckCircle2,
-  ListTodo,
-  TrendingUp,
-  FileSpreadsheet
+  CheckCircle2
 } from 'lucide-react';
 
 const ManagerPortal = () => {
-  const { user } = useContext(AuthContext);
+  const { user, shiftActive } = useContext(AuthContext);
 
   // Active sub-tab state linked to URL Search Query parameter (?tab=...)
   const [searchParams, setSearchParams] = useSearchParams();
@@ -34,45 +29,48 @@ const ManagerPortal = () => {
   // API Integrated States
   const [employees, setEmployees] = useState([]);
   const [leaves, setLeaves] = useState([]);
-  const [tasks, setTasks] = useState([]);
+  const [timesheets, setTimesheets] = useState([]);
   const [attendance, setAttendance] = useState({ today: [], history: [] });
-  
+  const [expandedTimesheetId, setExpandedTimesheetId] = useState(null);
+
+  // UI States
   const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
   const [banner, setBanner] = useState({ type: '', text: '' });
 
-  // Task Form input states
-  const [taskForm, setTaskForm] = useState({
-    employeeId: '',
-    title: '',
-    description: '',
-    priority: 'Medium',
-    deadline: ''
-  });
+  // Display feedback banner (declared early to avoid use-before-define issues)
+  const triggerBanner = (type, text) => {
+    setBanner({ type, text });
+    setTimeout(() => setBanner({ type: '', text: '' }), 5000);
+  };
 
   // Fetch all department-wide data from backend REST APIs
   const fetchPortalData = async () => {
     try {
       setLoading(true);
       
-      const [empRes, leavesRes, tasksRes, attendanceRes] = await Promise.all([
+      // Verify active shift status first to avoid race conditions during check-out socket broadcasts
+      const checkRes = await api.get('/attendance/today');
+      if (!checkRes.data.success || !checkRes.data.checkedIn) {
+        return;
+      }
+
+      const [empRes, leavesRes, timesheetsRes, attendanceRes] = await Promise.all([
         api.get('/employee/department'),
         api.get('/leaves/department'),
-        api.get('/tasks/department'),
+        api.get('/timesheets/department'),
         api.get('/attendance/department')
       ]);
 
       if (empRes.data.success) setEmployees(empRes.data.employees);
       if (leavesRes.data.success) setLeaves(leavesRes.data.leaves);
-      if (tasksRes.data.success) setTasks(tasksRes.data.tasks);
+      if (timesheetsRes.data.success) setTimesheets(timesheetsRes.data.timesheets);
       if (attendanceRes.data.success) setAttendance(attendanceRes.data);
 
-      // Pre-select first employee in task form if available
-      if (empRes.data.employees && empRes.data.employees.length > 0) {
-        setTaskForm(prev => ({ ...prev, employeeId: empRes.data.employees[0]._id }));
-      }
-
     } catch (err) {
+      if (err.response?.status === 403) {
+        // Silently skip locked/checked-out errors as the layout is transitioning
+        return;
+      }
       console.error('Failed to load manager portal data:', err.message);
       triggerBanner('danger', 'Error loading department data. Please check connection.');
     } finally {
@@ -81,8 +79,11 @@ const ManagerPortal = () => {
   };
 
   useEffect(() => {
-    fetchPortalData();
-  }, [user]);
+    const timer = setTimeout(() => {
+      fetchPortalData();
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [user, shiftActive]);
 
   // Setup real-time Socket.io listeners to refresh data dynamically on live updates
   useEffect(() => {
@@ -102,21 +103,18 @@ const ManagerPortal = () => {
       fetchPortalData();
     });
 
-    socket.on('task_update', () => {
-      console.log('Real-time task update detected. Refreshing...');
+    socket.on('timesheet_update', () => {
+      console.log('Real-time timesheet update detected. Refreshing...');
       fetchPortalData();
     });
 
     return () => {
       socket.disconnect();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  // Display feedback banner
-  const triggerBanner = (type, text) => {
-    setBanner({ type, text });
-    setTimeout(() => setBanner({ type: '', text: '' }), 5000);
-  };
+
 
   // Format date display
   const formatDate = (dateStr) => {
@@ -158,43 +156,16 @@ const ManagerPortal = () => {
     }
   };
 
-  // Delegate / Assign a task
-  const handleDelegateTask = async (e) => {
-    e.preventDefault();
-    const { employeeId, title, description, priority, deadline } = taskForm;
-
-    if (!employeeId || !title || !description || !deadline) {
-      triggerBanner('danger', 'Please enter all required task fields.');
-      return;
-    }
-
-    setSubmitting(true);
+  // Approve / Reject pending timesheets
+  const handleUpdateTimesheetStatus = async (timesheetId, status, rejectionReason = '') => {
     try {
-      const res = await api.post('/tasks/delegate', {
-        employeeId,
-        title,
-        description,
-        priority,
-        deadline
-      });
-
+      const res = await api.put(`/timesheets/${timesheetId}/status`, { status, rejectionReason });
       if (res.data.success) {
-        triggerBanner('success', 'Task assigned and delegated successfully!');
-        
-        // Reset form but retain employee selection
-        setTaskForm(prev => ({
-          ...prev,
-          title: '',
-          description: '',
-          deadline: ''
-        }));
-
+        triggerBanner('success', `Timesheet has been successfully ${status.toLowerCase()}!`);
         fetchPortalData();
       }
     } catch (err) {
-      triggerBanner('danger', err.response?.data?.message || 'Failed to delegate task.');
-    } finally {
-      setSubmitting(false);
+      triggerBanner('danger', err.response?.data?.message || 'Failed to update timesheet status.');
     }
   };
 
@@ -228,30 +199,7 @@ const ManagerPortal = () => {
     }
   };
 
-  // Determine task priority badge styling
-  const getPriorityBadge = (priority) => {
-    switch (priority) {
-      case 'High':
-        return 'bg-rose-500/10 text-rose-400 border border-rose-500/20 font-bold';
-      case 'Medium':
-        return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
-      default:
-        return 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
-    }
-  };
-
-  // Determine task status badge styling
-  const getTaskStatusBadge = (status) => {
-    switch (status) {
-      case 'Completed':
-        return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
-      case 'In Progress':
-        return 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20';
-      default:
-        return 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
-    }
-  };
-
+  // Standard text loading fallback
   if (loading && employees.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -264,7 +212,7 @@ const ManagerPortal = () => {
   const teamSize = employees.length;
   const activeCheckins = attendance.today.length;
   const pendingLeavesCount = leaves.filter(l => l.status === 'Pending').length;
-  const pendingTasksCount = tasks.filter(t => t.status !== 'Completed').length;
+  const pendingTimesheetsCount = timesheets.filter(t => t.status === 'Submitted').length;
 
   const isLeaveActiveToday = (startDateStr, endDateStr) => {
     const today = new Date();
@@ -405,24 +353,24 @@ const ManagerPortal = () => {
           <span className="text-[10px] text-slate-500 font-bold block mt-3">Awaiting review decisions</span>
         </div>
 
-        {/* Assigned/Pending Tasks */}
+        {/* Pending Timesheets */}
         <div className="glass-panel rounded-2xl p-5 bg-white/5 border-l-4 border-l-indigo-400">
           <div className="flex justify-between items-start">
             <div>
-              <p className="text-xs text-slate-400 font-semibold tracking-wide uppercase">Active Tasks</p>
-              <h4 className="text-3xl font-extrabold text-white mt-2">{pendingTasksCount}</h4>
+              <p className="text-xs text-slate-400 font-semibold tracking-wide uppercase">Pending Timesheets</p>
+              <h4 className="text-3xl font-extrabold text-white mt-2">{pendingTimesheetsCount}</h4>
             </div>
             <div className="p-2.5 rounded-xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400">
-              <ListTodo className="w-5 h-5" />
+              <Clock className="w-5 h-5" />
             </div>
           </div>
-          <span className="text-[10px] text-slate-500 font-bold block mt-3">Tasks in progress or checklist</span>
+          <span className="text-[10px] text-slate-500 font-bold block mt-3">Daily logs awaiting approval</span>
         </div>
       </div>
 
       {/* Glass Navigation Tabs */}
       <div className="flex border-b border-white/10 bg-slate-900/30 p-1.5 rounded-2xl backdrop-blur-md max-w-lg">
-        {['Overview', 'Leave Approvals', 'Task Delegator', 'Attendance Logs'].map((tab) => (
+        {['Overview', 'Leave Approvals', 'Timesheet Approvals', 'Attendance Logs'].map((tab) => (
           <button
             key={tab}
             onClick={() => setActiveTab(tab)}
@@ -649,179 +597,153 @@ const ManagerPortal = () => {
         </div>
       )}
 
-      {/* 3. TASK DELEGATOR PANEL */}
-      {activeTab === 'Task Delegator' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Create Task Form */}
-          <div className="glass-panel rounded-3xl p-6 bg-slate-900/40 self-start border border-white/5">
-            <h3 className="text-lg font-bold text-white mb-6 flex items-center gap-2">
-              <span>✍️</span> Delegate Task
+      {/* 3. TIMESHEET APPROVALS PANEL */}
+      {activeTab === 'Timesheet Approvals' && (
+        <div className="glass-panel rounded-3xl bg-slate-900/20 overflow-hidden border border-white/5">
+          <div className="p-6 border-b border-white/10">
+            <h3 className="font-bold text-white text-lg flex items-center gap-2">
+              <span>📋</span> Timesheet Approvals Console
             </h3>
-            
-            <form onSubmit={handleDelegateTask} className="space-y-5">
-              {/* Employee Selection */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Assign Team Member</label>
-                <select
-                  className="glass-input cursor-pointer"
-                  value={taskForm.employeeId}
-                  onChange={(e) => setTaskForm(prev => ({ ...prev, employeeId: e.target.value }))}
-                  disabled={submitting}
-                >
-                  {employees.map(emp => (
-                    <option key={emp._id} value={emp._id}>
-                      {emp.name} ({emp.employeeDetails?.designation || 'Staff'} - {emp.employeeDetails?.region})
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              {/* Title */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Task Title</label>
-                <input
-                  type="text"
-                  placeholder="Task title or milestone name"
-                  className="glass-input"
-                  value={taskForm.title}
-                  onChange={(e) => setTaskForm(prev => ({ ...prev, title: e.target.value }))}
-                  disabled={submitting}
-                />
-              </div>
-
-              {/* Description */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Task Description</label>
-                <textarea
-                  rows="3"
-                  placeholder="Explain requirements, deliverables, and expectation..."
-                  className="glass-input resize-none"
-                  value={taskForm.description}
-                  onChange={(e) => setTaskForm(prev => ({ ...prev, description: e.target.value }))}
-                  disabled={submitting}
-                ></textarea>
-              </div>
-
-              {/* Priority Select */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Priority Level</label>
-                <select
-                  className="glass-input cursor-pointer"
-                  value={taskForm.priority}
-                  onChange={(e) => setTaskForm(prev => ({ ...prev, priority: e.target.value }))}
-                  disabled={submitting}
-                >
-                  <option value="Low">Low Priority</option>
-                  <option value="Medium">Medium Priority</option>
-                  <option value="High">High Priority</option>
-                </select>
-              </div>
-
-              {/* Deadline */}
-              <div>
-                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Completion Deadline</label>
-                <input
-                  type="date"
-                  className="glass-input"
-                  value={taskForm.deadline}
-                  onChange={(e) => setTaskForm(prev => ({ ...prev, deadline: e.target.value }))}
-                  disabled={submitting}
-                />
-              </div>
-
-              {/* Submit Action */}
-              <button
-                type="submit"
-                disabled={submitting}
-                className="glass-btn w-full mt-2"
-              >
-                {submitting ? (
-                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                ) : (
-                  <>
-                    <Send className="w-4 h-4" />
-                    <span>Delegate Task</span>
-                  </>
-                )}
-              </button>
-            </form>
+            <p className="text-slate-500 text-xs mt-1">Review and approve daily project hours submitted by team members.</p>
           </div>
 
-          {/* Assigned Tasks Tracking List */}
-          <div className="lg:col-span-2 glass-panel rounded-3xl bg-slate-900/20 overflow-hidden self-start border border-white/5">
-            <div className="p-6 border-b border-white/10 flex items-center justify-between">
-              <h3 className="font-bold text-white text-lg flex items-center gap-2">
-                <span>📋</span> Task Progress Tracker
-              </h3>
-              <span className="text-xs px-2.5 py-1 rounded-lg bg-white/5 text-brand-accent font-bold">
-                Live Status
-              </span>
+          {timesheets.length > 0 ? (
+            <div className="overflow-x-auto w-full">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-slate-950/60 border-b border-white/5 text-xs text-slate-400 font-semibold tracking-wider uppercase">
+                    <th className="px-6 py-4">Employee</th>
+                    <th className="px-6 py-4">Logged Date</th>
+                    <th className="px-6 py-4 text-center">Total Hours</th>
+                    <th className="px-6 py-4 text-center">Status</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-sm text-slate-300">
+                  {timesheets.map((ts) => {
+                    const isExpanded = expandedTimesheetId === ts._id;
+
+                    return (
+                      <Fragment key={ts._id}>
+                        <tr className="hover:bg-white/5 transition-colors">
+                          <td className="px-6 py-4 flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden">
+                              {ts.employee?.employeeDetails?.profileImage ? (
+                                <img
+                                  src={`http://localhost:5000${ts.employee.employeeDetails.profileImage}`}
+                                  alt={ts.employee?.name}
+                                  className="w-full h-full object-cover"
+                                  onError={(e) => { e.target.style.display = 'none'; }}
+                                />
+                              ) : (
+                                ts.employee?.name?.charAt(0).toUpperCase() || 'U'
+                              )}
+                            </div>
+                            <div>
+                              <span className="block font-bold text-white leading-none">{ts.employee?.name}</span>
+                              <span className="text-[10px] text-slate-500 mt-1 block">{ts.employee?.employeeDetails?.designation || 'Staff'} ({ts.employee?.employeeDetails?.region})</span>
+                            </div>
+                          </td>
+                          <td className="px-6 py-4 font-semibold text-white">
+                            {formatDate(ts.date)}
+                          </td>
+                          <td className="px-6 py-4 text-center font-bold text-white">
+                            {ts.totalHours} hrs
+                          </td>
+                          <td className="px-6 py-4 text-center">
+                            <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getLeaveStatusBadge(ts.status)}`}>
+                              {ts.status}
+                            </span>
+                          </td>
+                          <td className="px-6 py-4 text-right">
+                            <div className="flex items-center justify-end gap-2.5">
+                              <button
+                                onClick={() => setExpandedTimesheetId(isExpanded ? null : ts._id)}
+                                className="p-1.5 rounded-lg text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 text-xs font-semibold cursor-pointer active:scale-95 transition-all"
+                              >
+                                {isExpanded ? 'Hide Details' : 'View Details'}
+                              </button>
+                              
+                              {ts.status === 'Submitted' && (
+                                <>
+                                  <button
+                                    onClick={() => handleUpdateTimesheetStatus(ts._id, 'Approved')}
+                                    className="p-1.5 rounded-lg text-emerald-400 bg-emerald-500/10 hover:bg-emerald-500/20 cursor-pointer active:scale-95 transition-all flex items-center gap-1 font-semibold text-xs border border-emerald-500/20"
+                                    title="Approve Timesheet"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      const reason = window.prompt('Please enter a reason for rejecting this timesheet:');
+                                      if (reason === null) return;
+                                      if (!reason.trim()) {
+                                        alert('Rejection reason is required.');
+                                        return;
+                                      }
+                                      handleUpdateTimesheetStatus(ts._id, 'Rejected', reason);
+                                    }}
+                                    className="p-1.5 rounded-lg text-rose-500 bg-rose-500/10 hover:bg-rose-500/20 cursor-pointer active:scale-95 transition-all flex items-center gap-1 font-semibold text-xs border border-rose-500/20"
+                                    title="Reject Timesheet"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </td>
+                        </tr>
+
+                        {/* Expandable Timesheet Entries Area */}
+                        {isExpanded && (
+                          <tr className="bg-slate-950/40">
+                            <td colSpan="5" className="px-6 py-4">
+                              <div className="p-4 rounded-2xl border border-white/5 bg-slate-950/60 space-y-4">
+                                <div className="flex justify-between items-center pb-2 border-b border-white/10">
+                                  <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400">Daily Breakdown</h4>
+                                  <span className="text-xs text-slate-300 font-bold">Total: {ts.totalHours} hrs</span>
+                                </div>
+                                <div className="overflow-x-auto">
+                                  <table className="w-full text-left text-xs border-collapse">
+                                    <thead>
+                                      <tr className="text-slate-500 border-b border-white/5 uppercase font-semibold text-[10px] tracking-wider">
+                                        <th className="pb-2 w-1/3">Project / Client</th>
+                                        <th className="pb-2 w-1/2">Activity Description</th>
+                                        <th className="pb-2 text-right">Hours Logged</th>
+                                      </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-white/5 text-slate-300">
+                                      {ts.entries.map((entry, idx) => (
+                                        <tr key={idx}>
+                                          <td className="py-2.5 font-bold text-white">{entry.project}</td>
+                                          <td className="py-2.5 text-slate-400" title={entry.description}>{entry.description}</td>
+                                          <td className="py-2.5 text-right font-bold text-white">{entry.hours} hrs</td>
+                                        </tr>
+                                      ))}
+                                    </tbody>
+                                  </table>
+                                </div>
+                                {ts.status === 'Rejected' && ts.rejectionReason && (
+                                  <div className="text-xs text-rose-400 bg-rose-500/10 p-3 rounded-xl border border-rose-500/20">
+                                    <span className="font-bold">Rejection Feedback:</span> "{ts.rejectionReason}"
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    );
+                  })}
+                </tbody>
+              </table>
             </div>
-
-            {tasks.length > 0 ? (
-              <div className="overflow-x-auto w-full">
-                <table className="w-full text-left border-collapse">
-                  <thead>
-                    <tr className="bg-slate-950/60 border-b border-white/5 text-xs text-slate-400 font-semibold tracking-wider uppercase">
-                      <th className="px-6 py-4">Assigned To</th>
-                      <th className="px-6 py-4">Task Details</th>
-                      <th className="px-6 py-4">Priority</th>
-                      <th className="px-6 py-4">Deadline</th>
-                      <th className="px-6 py-4">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-white/5 text-sm text-slate-300">
-                    {tasks.map((task) => (
-                      <tr key={task._id} className="hover:bg-white/5 transition-colors">
-                        <td className="px-6 py-4 flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden text-xs">
-                            {task.employee?.employeeDetails?.profileImage ? (
-                              <img
-                                src={`http://localhost:5000${task.employee.employeeDetails.profileImage}`}
-                                alt={task.employee?.name}
-                                className="w-full h-full object-cover"
-                                onError={(e) => { e.target.style.display = 'none'; }}
-                              />
-                            ) : (
-                              task.employee?.name?.charAt(0).toUpperCase() || 'U'
-                            )}
-                          </div>
-                          <div>
-                            <span className="block font-bold text-white leading-none text-xs">{task.employee?.name}</span>
-                            <span className="text-[9px] text-slate-500 mt-1 block">{task.employee?.employeeDetails?.region}</span>
-                          </div>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className="block font-semibold text-slate-200">{task.title}</span>
-                          <span className="text-xs text-slate-500 font-medium block max-w-sm truncate" title={task.description}>
-                            {task.description}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider ${getPriorityBadge(task.priority)}`}>
-                            {task.priority}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 font-semibold text-slate-300 text-xs">
-                          {formatDate(task.deadline)}
-                        </td>
-                        <td className="px-6 py-4">
-                          <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getTaskStatusBadge(task.status)}`}>
-                            {task.status}
-                          </span>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-20 text-slate-500">
-                <AlertCircle className="w-12 h-12 text-slate-700 mb-2 animate-pulse" />
-                <p className="text-sm font-medium">No tasks delegated to department employees.</p>
-              </div>
-            )}
-          </div>
+          ) : (
+            <div className="flex flex-col items-center justify-center py-20 text-slate-500">
+              <CheckCircle2 className="w-12 h-12 text-slate-700 mb-2 animate-pulse" />
+              <p className="text-sm font-medium">No department timesheets logged.</p>
+            </div>
+          )}
         </div>
       )}
 

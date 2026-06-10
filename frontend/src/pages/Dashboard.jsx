@@ -1,5 +1,5 @@
 // Import React hooks, icons, and context
-import React, { useState, useEffect, useContext } from 'react';
+import { useState, useEffect, useContext, Fragment } from 'react';
 import { io } from 'socket.io-client';
 import { AuthContext } from '../context/AuthContext';
 import api from '../services/api';
@@ -8,7 +8,6 @@ import {
   LogIn,
   LogOut,
   TrendingUp,
-  FileText,
   AlertCircle,
   CheckCircle,
   CalendarDays,
@@ -19,7 +18,7 @@ import {
 } from 'lucide-react';
 
 const Dashboard = () => {
-  const { user } = useContext(AuthContext);
+  const { user, shiftActive, refreshShiftStatus } = useContext(AuthContext);
 
   // Real-time clock state
   const [time, setTime] = useState(new Date());
@@ -27,7 +26,7 @@ const Dashboard = () => {
   // API Integrated States
   const [attendance, setAttendance] = useState({ checkedIn: false, checkedOut: false, onBreak: false, record: null });
   const [leaves, setLeaves] = useState({ balances: { Casual: 10, Sick: 10, Paid: 15 }, history: [] });
-  const [tasks, setTasks] = useState({ counts: { total: 0, todo: 0, inProgress: 0, completed: 0 }, tasks: [] });
+  const [timesheets, setTimesheets] = useState([]);
   const [notices, setNotices] = useState([]);
   const [salaries, setSalaries] = useState([]);
   const [departmentLeaves, setDepartmentLeaves] = useState([]);
@@ -35,22 +34,47 @@ const Dashboard = () => {
   const [message, setMessage] = useState({ type: '', text: '' });
   const [downloadingId, setDownloadingId] = useState(null);
 
+  const getTodayDateString = () => {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
+  };
+
+  const getTodayTimesheetStatus = () => {
+    const todayStr = getTodayDateString();
+    const todayTs = timesheets.find(ts => ts.date === todayStr);
+    return todayTs ? todayTs.status : 'None';
+  };
+
   // Update ticking clock every second
   useEffect(() => {
     const timer = setInterval(() => setTime(new Date()), 1000);
     return () => clearInterval(timer);
   }, []);
 
+  // Helper to show visual warning/success message banner (hoisted to prevent declaration errors)
+  const showBanner = (type, text) => {
+    setMessage({ type, text });
+    setTimeout(() => setMessage({ type: '', text: '' }), 5000);
+  };
+
   // Fetch all dashboard summary data from backend REST APIs
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = async (isActive = shiftActive) => {
     try {
       setLoading(true);
       
       // Call APIs concurrently for fast loading times
-      const [attendanceRes, leavesRes, tasksRes, noticesRes, salaryRes, deptLeavesRes] = await Promise.all([
+      const [attendanceRes, leavesRes, timesheetsRes, noticesRes, salaryRes, deptLeavesRes] = await Promise.all([
         api.get('/attendance/today'),
         api.get('/leaves'),
-        api.get('/tasks'),
+        isActive
+          ? api.get('/timesheets').catch(err => {
+              console.error('Failed to load timesheets API:', err.message);
+              return { data: { success: false, history: [] } };
+            })
+          : Promise.resolve({ data: { success: true, history: [] } }),
         api.get('/notices').catch(err => {
           console.error('Failed to load notices API:', err.message);
           return { data: { success: false, notices: [] } };
@@ -59,15 +83,19 @@ const Dashboard = () => {
           console.error('Failed to load salary API:', err.message);
           return { data: { success: false, slips: [] } };
         }),
-        api.get('/leaves/department').catch(err => {
-          console.error('Failed to load department leaves API:', err.message);
-          return { data: { success: false, leaves: [] } };
-        })
+        isActive
+          ? api.get('/leaves/department').catch(err => {
+              console.error('Failed to load department leaves API:', err.message);
+              return { data: { success: false, leaves: [] } };
+            })
+          : Promise.resolve({ data: { success: true, leaves: [] } })
       ]);
 
       if (attendanceRes.data.success) setAttendance(attendanceRes.data);
       if (leavesRes.data.success) setLeaves(leavesRes.data);
-      if (tasksRes.data.success) setTasks(tasksRes.data);
+      if (timesheetsRes && timesheetsRes.data && timesheetsRes.data.success) {
+        setTimesheets(timesheetsRes.data.history);
+      }
       if (noticesRes && noticesRes.data && noticesRes.data.success) {
         setNotices(noticesRes.data.notices);
       }
@@ -87,8 +115,11 @@ const Dashboard = () => {
   };
 
   useEffect(() => {
-    fetchDashboardData();
-  }, [user]);
+    const timer = setTimeout(() => {
+      fetchDashboardData(shiftActive);
+    }, 0);
+    return () => clearTimeout(timer);
+  }, [user, shiftActive]);
 
   // Setup real-time Socket.io listeners to refresh dashboard data dynamically
   useEffect(() => {
@@ -100,6 +131,7 @@ const Dashboard = () => {
 
     socket.on('attendance_update', () => {
       console.log('Real-time attendance update detected on Dashboard. Refreshing...');
+      refreshShiftStatus();
       fetchDashboardData();
     });
 
@@ -108,8 +140,8 @@ const Dashboard = () => {
       fetchDashboardData();
     });
 
-    socket.on('task_update', () => {
-      console.log('Real-time task update detected on Dashboard. Refreshing...');
+    socket.on('timesheet_update', () => {
+      console.log('Real-time timesheet update detected on Dashboard. Refreshing...');
       fetchDashboardData();
     });
 
@@ -118,18 +150,14 @@ const Dashboard = () => {
     };
   }, [user]);
 
-  // Helper to show visual warning/success message banner
-  const showBanner = (type, text) => {
-    setMessage({ type, text });
-    setTimeout(() => setMessage({ type: '', text: '' }), 5000);
-  };
-
   // Perform daily check-in call
   const handleCheckIn = async () => {
     try {
       const res = await api.post('/attendance/checkin');
       if (res.data.success) {
         showBanner('success', res.data.message || 'Checked in successfully!');
+        // Refresh shift active state globally
+        await refreshShiftStatus();
         // Refresh dashboard statistics
         fetchDashboardData();
       }
@@ -140,10 +168,18 @@ const Dashboard = () => {
 
   // Perform daily check-out call
   const handleCheckOut = async () => {
+    const status = getTodayTimesheetStatus();
+    if (status !== 'Submitted' && status !== 'Approved') {
+      showBanner('danger', 'Please submit your daily timesheet for today before checking out!');
+      return;
+    }
     try {
       const res = await api.post('/attendance/checkout');
       if (res.data.success) {
         showBanner('success', 'Checked out successfully! Shift logged.');
+        // Refresh shift active state globally
+        await refreshShiftStatus();
+        // Refresh dashboard statistics
         fetchDashboardData();
       }
     } catch (err) {
@@ -174,19 +210,6 @@ const Dashboard = () => {
       }
     } catch (err) {
       showBanner('danger', err.response?.data?.message || 'Failed to end break');
-    }
-  };
-
-  // Quick mark a task as completed directly from the checklist on the Dashboard
-  const handleQuickCompleteTask = async (taskId) => {
-    try {
-      const res = await api.put(`/tasks/${taskId}`, { status: 'Completed' });
-      if (res.data.success) {
-        showBanner('success', 'Task checked off as completed! Excellent.');
-        fetchDashboardData();
-      }
-    } catch (err) {
-      showBanner('danger', 'Failed to update task.');
     }
   };
 
@@ -501,13 +524,30 @@ const Dashboard = () => {
                 </button>
               ) : (
                 <div className="flex flex-col gap-3 w-full">
-                  <button
-                    onClick={handleCheckOut}
-                    className="w-full bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-semibold rounded-xl px-6 py-3.5 transition-all duration-300 shadow-lg shadow-rose-500/20 hover:shadow-rose-500/30 hover:scale-[1.02] cursor-pointer flex items-center justify-center gap-2 text-sm"
-                  >
-                    <LogOut className="w-4 h-4" />
-                    <span>Check Out from Shift</span>
-                  </button>
+                  {getTodayTimesheetStatus() !== 'Submitted' && getTodayTimesheetStatus() !== 'Approved' ? (
+                    <div className="flex flex-col gap-2 w-full">
+                      <button
+                        onClick={handleCheckOut}
+                        className="w-full bg-slate-800 text-slate-500 font-semibold rounded-xl px-6 py-3.5 flex items-center justify-center gap-2 text-sm cursor-not-allowed border border-white/5"
+                        title="Submit daily timesheet to unlock checkout"
+                      >
+                        <LogOut className="w-4 h-4 text-slate-600" />
+                        <span>Check Out from Shift (Locked)</span>
+                      </button>
+                      <div className="p-3 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-400 text-[11px] font-bold flex items-center gap-2">
+                        <AlertCircle className="w-4 h-4 flex-shrink-0 animate-pulse" />
+                        <span>Submit today's daily timesheet log to unlock shift checkout.</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={handleCheckOut}
+                      className="w-full bg-rose-500 hover:bg-rose-600 active:scale-95 text-white font-semibold rounded-xl px-6 py-3.5 transition-all duration-300 shadow-lg shadow-rose-500/20 hover:shadow-rose-500/30 hover:scale-[1.02] cursor-pointer flex items-center justify-center gap-2 text-sm"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      <span>Check Out from Shift</span>
+                    </button>
+                  )}
                   <button
                     onClick={handleBreakIn}
                     className="w-full bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-semibold rounded-xl px-6 py-3.5 transition-all duration-300 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/30 hover:scale-[1.02] cursor-pointer flex items-center justify-center gap-2 text-sm"
@@ -581,7 +621,7 @@ const Dashboard = () => {
 
             {/* 2. Break Events */}
             {attendance.record?.breaks?.map((b, idx) => (
-              <React.Fragment key={idx}>
+              <Fragment key={idx}>
                 {/* Break Start */}
                 <div className="relative">
                   <span className="absolute -left-[33px] top-0.5 w-5 h-5 rounded-full bg-amber-500/10 border-2 border-amber-500 flex items-center justify-center text-[10px] text-amber-400 font-bold">
@@ -620,7 +660,7 @@ const Dashboard = () => {
                     </>
                   )}
                 </div>
-              </React.Fragment>
+              </Fragment>
             ))}
 
             {/* 3. Live Active Shift Node */}
@@ -695,19 +735,27 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Task Completion Card */}
-        <div className="glass-panel rounded-2xl p-5 bg-white/5 flex items-center gap-4 hover:scale-[1.02] transition-transform duration-300">
-          <div className="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center text-brand-danger flex-shrink-0">
-            <FileText className="w-6 h-6" />
-          </div>
-          <div>
-            <p className="text-xs text-slate-400 font-semibold tracking-wide uppercase">Tasks Checklist</p>
-            <h4 className="text-2xl font-bold text-white mt-1">
-              {tasks.counts.completed} / {tasks.counts.total}{' '}
-              <span className="text-xs text-slate-400 font-normal">completed</span>
-            </h4>
-          </div>
-        </div>
+        {/* Daily Timesheet Summary Card */}
+        {(() => {
+          const todayStr = getTodayDateString();
+          const todayTimesheet = timesheets.find(ts => ts.date === todayStr);
+          const todayHours = todayTimesheet ? todayTimesheet.totalHours : 0;
+          const todayStatus = todayTimesheet ? todayTimesheet.status : 'No Submission';
+          return (
+            <div className="glass-panel rounded-2xl p-5 bg-white/5 flex items-center gap-4 hover:scale-[1.02] transition-transform duration-300">
+              <div className="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center text-brand-danger flex-shrink-0">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div>
+                <p className="text-xs text-slate-400 font-semibold tracking-wide uppercase">Daily Timesheet</p>
+                <h4 className="text-2xl font-bold text-white mt-1">
+                  {todayHours} hrs{' '}
+                  <span className="text-xs text-slate-400 font-normal">({todayStatus})</span>
+                </h4>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Quick Payslip Download Card */}
         <div className="glass-panel rounded-2xl p-5 bg-white/5 flex items-center justify-between hover:scale-[1.02] transition-transform duration-300 group">
@@ -829,74 +877,64 @@ const Dashboard = () => {
           </div>
         </div>
 
-        {/* Middle Side (Col span 2): Active Task Check-offs List */}
-        <div className="lg:col-span-2 glass-panel rounded-3xl p-6 bg-slate-900/20 flex flex-col justify-between">
-          <div>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-bold text-white">Upcoming Tasks Checklist</h3>
-              <span className="text-xs font-semibold bg-white/5 text-slate-300 px-2.5 py-1 rounded-lg">
-                Pending: {tasks.counts.todo + tasks.counts.inProgress}
-              </span>
-            </div>
+        {/* Middle Side (Col span 2): Recent Timesheets Log */}
+        {(() => {
+          const formatDateDisplay = (dateStr) => {
+            const d = new Date(dateStr);
+            return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+          };
+          return (
+            <div className="lg:col-span-2 glass-panel rounded-3xl p-6 bg-slate-900/20 flex flex-col justify-between">
+              <div>
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-bold text-white">Recent Daily Logs</h3>
+                  <span className="text-xs font-semibold bg-white/5 text-slate-300 px-2.5 py-1 rounded-lg">
+                    Logged Days: {timesheets.length}
+                  </span>
+                </div>
 
-            {/* Filter and display only To Do or In Progress tasks */}
-            {tasks.tasks.filter(t => t.status !== 'Completed').length > 0 ? (
-              <div className="space-y-3">
-                {tasks.tasks
-                  .filter(t => t.status !== 'Completed')
-                  .slice(0, 3) // Show top 3 pending tasks
-                  .map((task) => (
-                    <div 
-                      key={task._id} 
-                      className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors flex items-start gap-3.5 group"
-                    >
-                      <button
-                        onClick={() => handleQuickCompleteTask(task._id)}
-                        className="w-5 h-5 mt-0.5 rounded-lg border-2 border-slate-600 hover:border-brand-success flex items-center justify-center cursor-pointer transition-colors"
-                        title="Mark as completed"
-                      >
-                        <CheckCircle className="w-3.5 h-3.5 text-brand-success opacity-0 group-hover:opacity-40 transition-opacity" />
-                      </button>
-                      
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <h4 className="text-sm font-semibold text-white truncate">{task.title}</h4>
-                          <span className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                            task.priority === 'High' 
-                              ? 'bg-rose-500/10 text-rose-400' 
-                              : task.priority === 'Medium' 
-                                ? 'bg-amber-500/10 text-amber-400' 
-                                : 'bg-slate-500/10 text-slate-400'
-                          }`}>
-                            {task.priority}
-                          </span>
+                {timesheets.length > 0 ? (
+                  <div className="space-y-3">
+                    {timesheets.slice(0, 3).map((ts) => (
+                      <div key={ts._id} className="p-4 rounded-2xl bg-white/5 border border-white/5 hover:border-white/10 transition-colors flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <h4 className="text-sm font-semibold text-white truncate">{formatDateDisplay(ts.date)}</h4>
+                          <p className="text-xs text-slate-400 mt-1">{ts.totalHours} hours logged</p>
                         </div>
-                        <p className="text-xs text-slate-400 truncate mt-1">{task.description}</p>
-                        <p className="text-[10px] text-slate-500 mt-2 font-semibold">
-                          Deadline: {new Date(task.deadline).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-                        </p>
+                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider ${
+                          ts.status === 'Approved'
+                            ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20'
+                            : ts.status === 'Submitted'
+                              ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20'
+                              : ts.status === 'Rejected'
+                                ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                        }`}>
+                          {ts.status}
+                        </span>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center py-8 text-slate-500">
+                    <Clock className="w-10 h-10 text-slate-700 mb-2 animate-pulse" />
+                    <p className="text-sm">No daily timesheets recorded.</p>
+                  </div>
+                )}
               </div>
-            ) : (
-              <div className="flex flex-col items-center justify-center py-8 text-slate-500">
-                <CheckCircle className="w-10 h-10 text-emerald-500/30 mb-2 animate-bounce" />
-                <p className="text-sm">Hooray! No pending tasks assigned.</p>
-              </div>
-            )}
-          </div>
 
-          <div className="mt-4 pt-4 border-t border-white/5 flex justify-end">
-            <a 
-              href="/tasks" 
-              className="text-xs text-brand-accent hover:text-indigo-400 font-semibold flex items-center gap-1 hover:underline"
-            >
-              <span>View full checklist board</span>
-              <ArrowRight className="w-3.5 h-3.5" />
-            </a>
-          </div>
-        </div>
+              <div className="mt-4 pt-4 border-t border-white/5 flex justify-end">
+                <a 
+                  href="/timesheets" 
+                  className="text-xs text-brand-accent hover:text-indigo-400 font-semibold flex items-center gap-1 hover:underline"
+                >
+                  <span>Go to timesheets portal</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Admin Bulletin Board Announcement Section */}

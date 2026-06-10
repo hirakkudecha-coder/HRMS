@@ -1,7 +1,7 @@
 // Import required models
 const User = require('../models/User');
 const Leave = require('../models/Leave');
-const Task = require('../models/Task');
+const Timesheet = require('../models/Timesheet');
 const Attendance = require('../models/Attendance');
 const Notice = require('../models/Notice');
 const Salary = require('../models/Salary');
@@ -34,11 +34,11 @@ exports.getAdminOverview = async (req, res) => {
     const pendingLeaves = await Leave.countDocuments({ status: 'Pending' });
     const approvedLeaves = await Leave.countDocuments({ status: 'Approved' });
 
-    // Task completion stats
-    const totalTasks = await Task.countDocuments();
-    const completedTasks = await Task.countDocuments({ status: 'Completed' });
-    const inProgressTasks = await Task.countDocuments({ status: 'In Progress' });
-    const todoTasks = await Task.countDocuments({ status: 'To Do' });
+    // Timesheet completion stats
+    const totalTimesheets = await Timesheet.countDocuments();
+    const approvedTimesheets = await Timesheet.countDocuments({ status: 'Approved' });
+    const submittedTimesheets = await Timesheet.countDocuments({ status: 'Submitted' });
+    const draftTimesheets = await Timesheet.countDocuments({ status: 'Draft' });
 
     // Today's attendance count — get all employees with their timezone
     const allEmployees = await User.find({ role: { $in: ['employee', 'manager'] } }).select('_id employeeDetails');
@@ -86,10 +86,10 @@ exports.getAdminOverview = async (req, res) => {
         totalManagers,
         pendingLeaves,
         approvedLeaves,
-        totalTasks,
-        completedTasks,
-        inProgressTasks,
-        todoTasks,
+        totalTimesheets,
+        approvedTimesheets,
+        submittedTimesheets,
+        draftTimesheets,
         presentToday,
         checkedOutToday,
         totalWorkforce: totalEmployees + totalManagers
@@ -219,7 +219,7 @@ exports.deleteEmployee = async (req, res) => {
     await Promise.all([
       Attendance.deleteMany({ employee: userId }),
       Leave.deleteMany({ employee: userId }),
-      Task.deleteMany({ employee: userId }),
+      Timesheet.deleteMany({ employee: userId }),
       Salary.deleteMany({ employee: userId }),
     ]);
 
