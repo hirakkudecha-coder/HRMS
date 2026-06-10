@@ -33,6 +33,10 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [downloadingId, setDownloadingId] = useState(null);
+  const [grossInput, setGrossInput] = useState(1200000);
+  const [deductionsInput, setDeductionsInput] = useState(150000);
+  const [regime, setRegime] = useState('New'); // 'New' or 'Old'
+  const [showTaxBreakdown, setShowTaxBreakdown] = useState(false);
 
   const getTodayDateString = () => {
     const d = new Date();
@@ -101,6 +105,12 @@ const Dashboard = () => {
       }
       if (salaryRes && salaryRes.data && salaryRes.data.success) {
         setSalaries(salaryRes.data.slips);
+        if (salaryRes.data.slips && salaryRes.data.slips.length > 0) {
+          const latestSlip = salaryRes.data.slips[0];
+          if (latestSlip && latestSlip.grossEarnings) {
+            setGrossInput(latestSlip.grossEarnings * 12);
+          }
+        }
       }
       if (deptLeavesRes && deptLeavesRes.data && deptLeavesRes.data.success) {
         setDepartmentLeaves(deptLeavesRes.data.leaves);
@@ -402,6 +412,120 @@ const Dashboard = () => {
 
       return startZeroA - startZeroB;
     });
+
+  const calculateTax = () => {
+    const gross = Number(grossInput) || 0;
+    const deductions = Number(deductionsInput) || 0;
+    
+    if (regime === 'New') {
+      // New Regime standard deduction = 75000
+      const standardDeduction = 75000;
+      const taxable = Math.max(0, gross - standardDeduction);
+      
+      if (taxable <= 700000) {
+        let baseTax = 0;
+        if (taxable > 300000) {
+          baseTax += Math.min(taxable - 300000, 400000) * 0.05;
+        }
+        return { 
+          tax: 0, 
+          cess: 0, 
+          total: 0, 
+          monthly: 0, 
+          slabs: [{ label: 'Rebate (87A)', value: -baseTax }], 
+          rebateApplied: true,
+          originalTax: baseTax
+        };
+      }
+      
+      const slabs = [];
+      slabs.push({ label: 'Up to ₹3L (Nil)', value: 0 });
+      let tax = 0;
+      
+      if (taxable > 300000) {
+        const slab1 = Math.min(taxable - 300000, 400000);
+        const slabTax = slab1 * 0.05;
+        tax += slabTax;
+        slabs.push({ label: '₹3L to ₹7L (5%)', value: slabTax });
+      }
+      if (taxable > 700000) {
+        const slab2 = Math.min(taxable - 700000, 300000);
+        const slabTax = slab2 * 0.10;
+        tax += slabTax;
+        slabs.push({ label: '₹7L to ₹10L (10%)', value: slabTax });
+      }
+      if (taxable > 1000000) {
+        const slab3 = Math.min(taxable - 1000000, 400000);
+        const slabTax = slab3 * 0.15;
+        tax += slabTax;
+        slabs.push({ label: '₹10L to ₹14L (15%)', value: slabTax });
+      }
+      if (taxable > 1400000) {
+        const slab4 = Math.min(taxable - 1400000, 100000);
+        const slabTax = slab4 * 0.20;
+        tax += slabTax;
+        slabs.push({ label: '₹14L to ₹15L (20%)', value: slabTax });
+      }
+      if (taxable > 1500000) {
+        const slab5 = taxable - 1500000;
+        const slabTax = slab5 * 0.30;
+        tax += slabTax;
+        slabs.push({ label: 'Above ₹15L (30%)', value: slabTax });
+      }
+      
+      const cess = tax * 0.04;
+      const total = tax + cess;
+      return { tax, cess, total, monthly: Math.round(total / 12), slabs };
+    } else {
+      // Old Regime
+      const taxable = Math.max(0, gross - deductions);
+      
+      if (taxable <= 500000) {
+        let baseTax = 0;
+        if (taxable > 250000) {
+          baseTax += Math.min(taxable - 250000, 250000) * 0.05;
+        }
+        return { 
+          tax: 0, 
+          cess: 0, 
+          total: 0, 
+          monthly: 0, 
+          slabs: [{ label: 'Rebate (87A)', value: -baseTax }], 
+          rebateApplied: true,
+          originalTax: baseTax
+        };
+      }
+      
+      const slabs = [];
+      slabs.push({ label: 'Up to ₹2.5L (Nil)', value: 0 });
+      let tax = 0;
+      
+      if (taxable > 250000) {
+        const slab1 = Math.min(taxable - 250000, 250000);
+        const slabTax = slab1 * 0.05;
+        tax += slabTax;
+        slabs.push({ label: '₹2.5L to ₹5L (5%)', value: slabTax });
+      }
+      if (taxable > 500000) {
+        const slab2 = Math.min(taxable - 500000, 500000);
+        const slabTax = slab2 * 0.20;
+        tax += slabTax;
+        slabs.push({ label: '₹5L to ₹10L (20%)', value: slabTax });
+      }
+      if (taxable > 1000000) {
+        const slab3 = taxable - 1000000;
+        const slabTax = slab3 * 0.30;
+        tax += slabTax;
+        slabs.push({ label: 'Above ₹10L (30%)', value: slabTax });
+      }
+      
+      const cess = tax * 0.04;
+      const total = tax + cess;
+      return { tax, cess, total, monthly: Math.round(total / 12), slabs };
+    }
+  };
+
+  const taxDetails = calculateTax();
 
   if (loading && !attendance.record) {
     return (
@@ -798,50 +922,145 @@ const Dashboard = () => {
         {/* Left Side (Col span 1): Leave category trackers & Colleagues on Leave Today */}
         <div className="space-y-6">
           <div className="glass-panel rounded-3xl p-6 bg-slate-900/20 space-y-6">
-            <h3 className="text-lg font-bold text-white">Leave Balance</h3>
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <span>📊</span> Leave Balance Tracker
+            </h3>
             
-            <div className="space-y-4">
-              {/* Casual Leave Progress Bar */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-300">Casual Leave</span>
-                  <span className="text-brand-accent">{leaves.balances.Casual} / 10 remaining</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
-                  <div 
-                    className="h-full bg-brand-accent transition-all duration-500" 
-                    style={{ width: `${(leaves.balances.Casual / 10) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
+            <div className="flex flex-wrap items-center justify-around gap-6 pt-2">
+              {/* Casual Leave SVG Ring */}
+              {(() => {
+                const limit = 10;
+                const value = leaves.balances.Casual;
+                const percentage = Math.min(100, Math.max(0, (value / limit) * 100));
+                const radius = 28;
+                const stroke = 5;
+                const normalizedRadius = radius - stroke;
+                const circumference = normalizedRadius * 2 * Math.PI;
+                const strokeDashoffset = circumference - (percentage / 100) * circumference;
 
-              {/* Sick Leave Progress Bar */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-300">Sick Leave</span>
-                  <span className="text-brand-success">{leaves.balances.Sick} / 10 remaining</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
-                  <div 
-                    className="h-full bg-brand-success transition-all duration-500" 
-                    style={{ width: `${(leaves.balances.Sick / 10) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
+                return (
+                  <div className="flex flex-col items-center space-y-2">
+                    <div className="relative flex items-center justify-center">
+                      <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
+                        <circle
+                          stroke="rgba(255,255,255,0.05)"
+                          fill="transparent"
+                          strokeWidth={stroke}
+                          r={normalizedRadius}
+                          cx={radius}
+                          cy={radius}
+                        />
+                        <circle
+                          stroke="#6366f1"
+                          fill="transparent"
+                          strokeWidth={stroke}
+                          strokeDasharray={circumference + ' ' + circumference}
+                          style={{ strokeDashoffset }}
+                          strokeLinecap="round"
+                          r={normalizedRadius}
+                          cx={radius}
+                          cy={radius}
+                        />
+                      </svg>
+                      <span className="absolute text-xs font-extrabold text-white">{value}</span>
+                    </div>
+                    <div className="text-center">
+                      <span className="block text-[11px] font-bold text-white">Casual</span>
+                      <span className="text-[9px] text-slate-500 font-semibold">{limit} Max</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
-              {/* Paid Leave Progress Bar */}
-              <div className="space-y-1.5">
-                <div className="flex justify-between text-xs font-semibold">
-                  <span className="text-slate-300">Paid Annual Leave</span>
-                  <span className="text-amber-400">{leaves.balances.Paid} / 15 remaining</span>
-                </div>
-                <div className="h-2 rounded-full bg-slate-800 overflow-hidden">
-                  <div 
-                    className="h-full bg-amber-400 transition-all duration-500" 
-                    style={{ width: `${(leaves.balances.Paid / 15) * 100}%` }}
-                  ></div>
-                </div>
-              </div>
+              {/* Sick Leave SVG Ring */}
+              {(() => {
+                const limit = 10;
+                const value = leaves.balances.Sick;
+                const percentage = Math.min(100, Math.max(0, (value / limit) * 100));
+                const radius = 28;
+                const stroke = 5;
+                const normalizedRadius = radius - stroke;
+                const circumference = normalizedRadius * 2 * Math.PI;
+                const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+                return (
+                  <div className="flex flex-col items-center space-y-2">
+                    <div className="relative flex items-center justify-center">
+                      <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
+                        <circle
+                          stroke="rgba(255,255,255,0.05)"
+                          fill="transparent"
+                          strokeWidth={stroke}
+                          r={normalizedRadius}
+                          cx={radius}
+                          cy={radius}
+                        />
+                        <circle
+                          stroke="#10b981"
+                          fill="transparent"
+                          strokeWidth={stroke}
+                          strokeDasharray={circumference + ' ' + circumference}
+                          style={{ strokeDashoffset }}
+                          strokeLinecap="round"
+                          r={normalizedRadius}
+                          cx={radius}
+                          cy={radius}
+                        />
+                      </svg>
+                      <span className="absolute text-xs font-extrabold text-white">{value}</span>
+                    </div>
+                    <div className="text-center">
+                      <span className="block text-[11px] font-bold text-white">Sick</span>
+                      <span className="text-[9px] text-slate-500 font-semibold">{limit} Max</span>
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Paid Leave SVG Ring */}
+              {(() => {
+                const limit = 15;
+                const value = leaves.balances.Paid;
+                const percentage = Math.min(100, Math.max(0, (value / limit) * 100));
+                const radius = 28;
+                const stroke = 5;
+                const normalizedRadius = radius - stroke;
+                const circumference = normalizedRadius * 2 * Math.PI;
+                const strokeDashoffset = circumference - (percentage / 100) * circumference;
+
+                return (
+                  <div className="flex flex-col items-center space-y-2">
+                    <div className="relative flex items-center justify-center">
+                      <svg height={radius * 2} width={radius * 2} className="transform -rotate-90">
+                        <circle
+                          stroke="rgba(255,255,255,0.05)"
+                          fill="transparent"
+                          strokeWidth={stroke}
+                          r={normalizedRadius}
+                          cx={radius}
+                          cy={radius}
+                        />
+                        <circle
+                          stroke="#f59e0b"
+                          fill="transparent"
+                          strokeWidth={stroke}
+                          strokeDasharray={circumference + ' ' + circumference}
+                          style={{ strokeDashoffset }}
+                          strokeLinecap="round"
+                          r={normalizedRadius}
+                          cx={radius}
+                          cy={radius}
+                        />
+                      </svg>
+                      <span className="absolute text-xs font-extrabold text-white">{value}</span>
+                    </div>
+                    <div className="text-center">
+                      <span className="block text-[11px] font-bold text-white">Paid</span>
+                      <span className="text-[9px] text-slate-500 font-semibold">{limit} Max</span>
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
@@ -874,6 +1093,160 @@ const Dashboard = () => {
                 <p className="text-xs">All department team members are active today.</p>
               </div>
             )}
+          </div>
+
+          {/* Tax Estimator Widget */}
+          <div className="glass-panel rounded-3xl p-6 bg-slate-900/20 space-y-4 animate-[fadeIn_0.4s_ease-out]">
+            <h3 className="text-lg font-bold text-white flex items-center gap-2">
+              <span>🧮</span> TDS & Tax Estimator
+            </h3>
+            <p className="text-slate-400 text-xs leading-relaxed">
+              Estimate your annual income tax and monthly TDS deductions under Old vs. New Indian tax regimes.
+            </p>
+
+            <div className="flex bg-slate-950/40 p-1 rounded-xl border border-white/5">
+              <button
+                type="button"
+                onClick={() => setRegime('New')}
+                className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                  regime === 'New'
+                    ? 'bg-violet-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                New Regime
+              </button>
+              <button
+                type="button"
+                onClick={() => setRegime('Old')}
+                className={`flex-1 py-1.5 text-[11px] font-bold rounded-lg transition-all ${
+                  regime === 'Old'
+                    ? 'bg-violet-600 text-white shadow'
+                    : 'text-slate-400 hover:text-white'
+                }`}
+              >
+                Old Regime (80C)
+              </button>
+            </div>
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Annual Gross Income (₹)</label>
+                <input
+                  type="number"
+                  value={grossInput}
+                  onChange={(e) => setGrossInput(Number(e.target.value))}
+                  className="bg-slate-950/80 border border-white/10 rounded-xl px-3 py-2 text-xs text-white w-full focus:outline-none focus:border-violet-500 font-mono"
+                  placeholder="e.g. 1200000"
+                />
+              </div>
+
+              {regime === 'Old' && (
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">Section 80C Deductions (₹)</label>
+                  <input
+                    type="number"
+                    value={deductionsInput}
+                    onChange={(e) => setDeductionsInput(Number(e.target.value))}
+                    className="bg-slate-950/80 border border-white/10 rounded-xl px-3 py-2 text-xs text-white w-full focus:outline-none focus:border-violet-500 font-mono"
+                    placeholder="e.g. 150000"
+                  />
+                </div>
+              )}
+
+              <div className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 space-y-2 mt-4 text-[11px]">
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Taxable Income:</span>
+                  <span className="font-bold text-white font-mono">
+                    ₹{(regime === 'New' ? Math.max(0, grossInput - 75000) : Math.max(0, grossInput - deductionsInput)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-slate-400">Est. Annual Tax:</span>
+                  <span className="font-bold text-white font-mono">₹{taxDetails.total.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between text-xs border-t border-white/5 pt-2 font-semibold">
+                  <span className="text-slate-400">Monthly TDS Estimate:</span>
+                  <span className="font-bold text-emerald-400 font-mono text-sm">₹{taxDetails.monthly.toLocaleString('en-IN')}</span>
+                </div>
+                <div className="flex justify-between text-xs border-t border-white/5 pt-2 font-semibold text-slate-300">
+                  <span className="text-slate-400">Monthly In-Hand Pay:</span>
+                  <span className="font-bold text-white font-mono text-sm">
+                    ₹{(Math.round((grossInput - taxDetails.total) / 12)).toLocaleString('en-IN')}
+                  </span>
+                </div>
+
+                <div className="pt-2">
+                  <button
+                    type="button"
+                    onClick={() => setShowTaxBreakdown(!showTaxBreakdown)}
+                    className="w-full text-center text-[10px] text-violet-400 hover:text-violet-300 font-bold tracking-wider uppercase cursor-pointer py-1"
+                  >
+                    {showTaxBreakdown ? 'Hide Step-by-Step Details' : 'View Step-by-Step Details'}
+                  </button>
+
+                  {showTaxBreakdown && (
+                    <div className="mt-3 space-y-3 pt-3 border-t border-white/5 bg-slate-950/40 p-2.5 rounded-xl text-[10px] text-slate-400 font-medium font-mono">
+                      <div>
+                        <span className="text-slate-500 block mb-0.5">Step 1: Gross Income</span>
+                        <div className="flex justify-between text-white font-bold">
+                          <span>Annual Gross:</span>
+                          <span>₹{grossInput.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-500 block mb-0.5">Step 2: Deductions</span>
+                        <div className="flex justify-between text-white font-bold">
+                          <span>{regime === 'New' ? 'Standard Deduction:' : 'Section 80C:'}</span>
+                          <span>– ₹{(regime === 'New' ? 75000 : deductionsInput).toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="flex justify-between text-slate-300 mt-0.5 font-bold">
+                          <span>Taxable Balance:</span>
+                          <span>₹{(regime === 'New' ? Math.max(0, grossInput - 75000) : Math.max(0, grossInput - deductionsInput)).toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-500 block mb-0.5">Step 3: Slab Calculations</span>
+                        <div className="space-y-1 pl-2 border-l border-white/10 mt-1">
+                          {taxDetails.slabs?.map((slab, i) => (
+                            <div key={i} className="flex justify-between">
+                              <span>{slab.label}:</span>
+                              <span className="text-white font-bold">₹{slab.value.toLocaleString('en-IN')}</span>
+                            </div>
+                          ))}
+                          {taxDetails.rebateApplied && (
+                            <div className="text-emerald-400 text-[9px] italic mt-1 leading-normal">
+                              * Net taxable income is under threshold, full tax rebate applied under Section 87A.
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div>
+                        <span className="text-slate-500 block mb-0.5">Step 4: Government Fee</span>
+                        <div className="flex justify-between text-white font-bold">
+                          <span>4% Cess:</span>
+                          <span>₹{taxDetails.cess.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+
+                      <div className="border-t border-white/5 pt-2 mt-2 text-[11px]">
+                        <div className="flex justify-between text-white font-extrabold">
+                          <span>Total Annual Tax:</span>
+                          <span>₹{taxDetails.total.toLocaleString('en-IN')}</span>
+                        </div>
+                        <div className="flex justify-between text-emerald-400 font-extrabold mt-1">
+                          <span>Monthly TDS:</span>
+                          <span>₹{taxDetails.monthly.toLocaleString('en-IN')}</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
           </div>
         </div>
 

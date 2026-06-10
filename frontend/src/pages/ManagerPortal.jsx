@@ -369,20 +369,31 @@ const ManagerPortal = () => {
       </div>
 
       {/* Glass Navigation Tabs */}
-      <div className="flex border-b border-white/10 bg-slate-900/30 p-1.5 rounded-2xl backdrop-blur-md max-w-lg">
-        {['Overview', 'Leave Approvals', 'Timesheet Approvals', 'Attendance Logs'].map((tab) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2 px-3 text-xs md:text-sm font-semibold rounded-xl transition-all duration-300 ${
-              activeTab === tab
-                ? 'bg-brand-accent text-white shadow-lg shadow-brand-accent/20'
-                : 'text-slate-400 hover:text-white hover:bg-white/5'
-            }`}
-          >
-            {tab}
-          </button>
-        ))}
+      <div className="flex border-b border-white/10 bg-slate-900/30 p-1.5 rounded-2xl backdrop-blur-md max-w-xl overflow-x-auto gap-1">
+        {['Overview', 'Leave Approvals', 'Timesheet Approvals', 'Attendance Logs'].map((tab) => {
+          let badgeCount = 0;
+          if (tab === 'Leave Approvals') badgeCount = pendingLeavesCount;
+          if (tab === 'Timesheet Approvals') badgeCount = pendingTimesheetsCount;
+
+          return (
+            <button
+              key={tab}
+              onClick={() => setActiveTab(tab)}
+              className={`flex-1 py-2 px-3 text-xs md:text-sm font-semibold rounded-xl transition-all duration-300 flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                activeTab === tab
+                  ? 'bg-brand-accent text-white shadow-lg shadow-brand-accent/20'
+                  : 'text-slate-400 hover:text-white hover:bg-white/5'
+              }`}
+            >
+              <span>{tab}</span>
+              {badgeCount > 0 && (
+                <span className="bg-rose-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full animate-pulse">
+                  {badgeCount}
+                </span>
+              )}
+            </button>
+          );
+        })}
       </div>
 
       {/* Active Tab Panel Views */}
@@ -390,6 +401,96 @@ const ManagerPortal = () => {
       {/* 1. OVERVIEW TEAM ROSTER PANEL */}
       {activeTab === 'Overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Team Live Status Map */}
+          <div className="lg:col-span-3 glass-panel rounded-3xl p-6 bg-slate-900/20 border border-white/5 space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white flex items-center gap-2">
+                <span className="relative flex h-3 w-3">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
+                </span>
+                <span>Team Live Status Map</span>
+              </h3>
+              <div className="flex gap-4 text-xs font-semibold text-slate-400">
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
+                  <span>Active ({employees.filter(emp => {
+                    const rec = attendance.today.find(r => r.employee?._id === emp._id || r.employee === emp._id);
+                    return rec && !rec.checkOut && !(rec.breaks && rec.breaks.length > 0 && rec.breaks[rec.breaks.length - 1].breakIn && !rec.breaks[rec.breaks.length - 1].breakOut);
+                  }).length})</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-500"></span>
+                  <span>On Break ({employees.filter(emp => {
+                    const rec = attendance.today.find(r => r.employee?._id === emp._id || r.employee === emp._id);
+                    return rec && !rec.checkOut && (rec.breaks && rec.breaks.length > 0 && rec.breaks[rec.breaks.length - 1].breakIn && !rec.breaks[rec.breaks.length - 1].breakOut);
+                  }).length})</span>
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <span className="w-2.5 h-2.5 rounded-full bg-slate-600"></span>
+                  <span>Off-Duty ({employees.filter(emp => {
+                    const rec = attendance.today.find(r => r.employee?._id === emp._id || r.employee === emp._id);
+                    return !rec || rec.checkOut;
+                  }).length})</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4">
+              {employees.map(emp => {
+                const rec = attendance.today.find(r => r.employee?._id === emp._id || r.employee === emp._id);
+                let status = 'Off-Duty';
+                let statusColor = 'bg-slate-800 border-slate-700 text-slate-400';
+                let indicatorColor = 'bg-slate-600';
+                
+                if (rec && !rec.checkOut) {
+                  const hasActiveBreak = rec.breaks && rec.breaks.length > 0 && 
+                                        rec.breaks[rec.breaks.length - 1].breakIn && 
+                                        !rec.breaks[rec.breaks.length - 1].breakOut;
+                  if (hasActiveBreak) {
+                    status = 'On Break';
+                    statusColor = 'bg-amber-500/10 border-amber-500/20 text-amber-400';
+                    indicatorColor = 'bg-amber-500';
+                  } else {
+                    status = 'Active';
+                    statusColor = 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400';
+                    indicatorColor = 'bg-emerald-500';
+                  }
+                }
+
+                return (
+                  <div key={emp._id} className="p-3.5 rounded-2xl bg-white/[0.02] border border-white/5 flex flex-col items-center text-center space-y-2.5 animate-[fadeIn_0.3s_ease-out]">
+                    <div className="relative">
+                      <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden text-lg">
+                        {emp.employeeDetails?.profileImage ? (
+                          <img
+                            src={`http://localhost:5000${emp.employeeDetails.profileImage}`}
+                            alt={emp.name}
+                            className="w-full h-full object-cover"
+                            onError={(e) => { e.target.style.display = 'none'; }}
+                          />
+                        ) : (
+                          emp.name.charAt(0).toUpperCase()
+                        )}
+                      </div>
+                      <span className={`absolute bottom-0 right-0 block h-3 w-3 rounded-full border-2 border-slate-950 ${indicatorColor}`} />
+                    </div>
+                    <div>
+                      <span className="block font-bold text-white text-xs truncate max-w-[100px]" title={emp.name}>{emp.name}</span>
+                      <span className="text-[9px] text-slate-500 truncate max-w-[100px] mt-0.5 block">{emp.employeeDetails?.designation || 'Staff'}</span>
+                    </div>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${statusColor}`}>
+                      {status}
+                    </span>
+                  </div>
+                );
+              })}
+              {employees.length === 0 && (
+                <div className="col-span-full py-6 text-center text-slate-500 text-xs">No team members to show.</div>
+              )}
+            </div>
+          </div>
+
           {/* Main Content: Team Roster Directory (col-span-2) */}
           <div className="lg:col-span-2 glass-panel rounded-3xl bg-slate-900/20 overflow-hidden self-start">
             <div className="p-6 border-b border-white/10 flex items-center justify-between">

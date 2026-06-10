@@ -36,6 +36,8 @@ const AdminDashboard = () => {
   const activeTab = searchParams.get('tab') || 'Overview';
   const setActiveTab = (tab) => setSearchParams({ tab });
 
+  const { user, shiftActive } = useContext(AuthContext);
+
   // ── Data State ──────────────────────────────────────────────────
   const [overview, setOverview] = useState(null);
   const [employees, setEmployees] = useState([]);
@@ -43,13 +45,18 @@ const AdminDashboard = () => {
   const [timesheets, setTimesheets] = useState([]);
   const [attendance, setAttendance] = useState({ today: [], history: [] });
   const [notices, setNotices] = useState([]);
+  const [documents, setDocuments] = useState([]);
+  const [auditLogs, setAuditLogs] = useState([]);
+  const [settings, setSettings] = useState({ SHIFT_TARGET_HOURS: 8, GRACE_PERIOD_MINUTES: 15 });
   const [expandedTimesheetId, setExpandedTimesheetId] = useState(null);
 
   // ── UI State ─────────────────────────────────────────────────────
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
+  const [savingSettings, setSavingSettings] = useState(false);
   const [banner, setBanner] = useState({ type: '', text: '' });
   const [searchQuery, setSearchQuery] = useState('');
+  const [docNotes, setDocNotes] = useState({});
 
   // ── Modal State ───────────────────────────────────────────────────
   const [showAddModal, setShowAddModal] = useState(false);
@@ -69,8 +76,6 @@ const AdminDashboard = () => {
     setTimeout(() => setBanner({ type: '', text: '' }), 5000);
   };
 
-  const { shiftActive } = useContext(AuthContext);
-
   // ── Fetch Functions ───────────────────────────────────────────────
   const fetchAll = async () => {
     try {
@@ -82,13 +87,16 @@ const AdminDashboard = () => {
         return;
       }
 
-      const [ovRes, empRes, leavesRes, timesheetsRes, attRes, noticesRes] = await Promise.all([
+      const [ovRes, empRes, leavesRes, timesheetsRes, attRes, noticesRes, docsRes, settingsRes, auditRes] = await Promise.all([
         api.get('/admin/overview'),
         api.get('/employee/department'),
         api.get('/leaves/department'),
         api.get('/timesheets/department'),
         api.get('/attendance/department'),
-        api.get('/notices')
+        api.get('/notices'),
+        api.get('/documents/all'),
+        api.get('/admin/settings'),
+        user?.role === 'admin' ? api.get('/admin/audit-logs').catch(() => ({ data: { success: false, logs: [] } })) : Promise.resolve({ data: { success: true, logs: [] } })
       ]);
 
       if (ovRes.data.success) setOverview(ovRes.data);
@@ -99,6 +107,9 @@ const AdminDashboard = () => {
       if (timesheetsRes.data.success) setTimesheets(timesheetsRes.data.timesheets);
       if (attRes.data.success) setAttendance(attRes.data);
       if (noticesRes.data.success) setNotices(noticesRes.data.notices);
+      if (docsRes.data.success) setDocuments(docsRes.data.documents);
+      if (settingsRes.data.success) setSettings(settingsRes.data.settings);
+      if (auditRes.data.success) setAuditLogs(auditRes.data.logs);
     } catch (err) {
       if (err.response?.status === 403) {
         // Silently skip locked/checked-out errors as the layout is transitioning
@@ -265,6 +276,46 @@ const AdminDashboard = () => {
     }
   };
 
+  const handleUpdateEmployeeRole = async (empId, newRole) => {
+    try {
+      const res = await api.put(`/admin/employees/${empId}/role`, { role: newRole });
+      if (res.data.success) {
+        triggerBanner('success', `Employee role updated to '${newRole}' successfully!`);
+        fetchAll();
+      }
+    } catch (err) {
+      triggerBanner('danger', err.response?.data?.message || 'Failed to update employee role.');
+    }
+  };
+
+  const handleVerifyDocument = async (docId, status, notes = '') => {
+    try {
+      const res = await api.put(`/documents/${docId}/status`, { status, verificationNotes: notes });
+      if (res.data.success) {
+        triggerBanner('success', `Document marked as '${status}' successfully!`);
+        fetchAll();
+      }
+    } catch (err) {
+      triggerBanner('danger', err.response?.data?.message || 'Failed to verify document.');
+    }
+  };
+
+  const handleSaveSettings = async (e) => {
+    e.preventDefault();
+    setSavingSettings(true);
+    try {
+      const res = await api.put('/admin/settings', settings);
+      if (res.data.success) {
+        triggerBanner('success', 'System settings saved successfully!');
+        fetchAll();
+      }
+    } catch (err) {
+      triggerBanner('danger', err.response?.data?.message || 'Failed to save settings.');
+    } finally {
+      setSavingSettings(false);
+    }
+  };
+
   // ── Filtered Employees ────────────────────────────────────────────
   const filteredEmployees = employees.filter(emp =>
     emp.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -337,11 +388,17 @@ const AdminDashboard = () => {
   const tabs = [
     { id: 'Overview', icon: LayoutDashboard, label: 'Overview' },
     { id: 'Employees', icon: Users, label: 'Employees' },
+    { id: 'Verify Documents', icon: ShieldCheck, label: 'Verify Docs' },
     { id: 'Leaves', icon: CalendarDays, label: 'Leaves' },
     { id: 'Timesheets', icon: FileSpreadsheet, label: 'Timesheets' },
     { id: 'Attendance', icon: Clock, label: 'Attendance' },
     { id: 'Notices', icon: Megaphone, label: 'Notices' },
+    { id: 'System Settings', icon: Activity, label: 'Settings' }
   ];
+
+  if (user?.role === 'admin') {
+    tabs.push({ id: 'Audit Logs', icon: BellRing, label: 'Audit Logs' });
+  }
 
   if (loading && !overview) {
     return (
@@ -618,9 +675,23 @@ const AdminDashboard = () => {
                         </span>
                       </td>
                       <td className="px-5 py-4">
-                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${emp.role === 'manager' ? 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20' : 'bg-slate-500/10 text-slate-400 border border-slate-500/20'}`}>
-                          {emp.role}
-                        </span>
+                        {emp._id === user?.id ? (
+                          <span className="px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider bg-violet-500/10 text-violet-400 border border-violet-500/20">
+                            {emp.role} (You)
+                          </span>
+                        ) : (
+                          <select
+                            value={emp.role}
+                            onChange={(e) => handleUpdateEmployeeRole(emp._id, e.target.value)}
+                            className="bg-slate-900/80 text-xs font-semibold text-slate-300 border border-white/10 rounded-xl px-2.5 py-1.5 focus:outline-none focus:border-violet-500 cursor-pointer"
+                          >
+                            <option value="employee">Employee</option>
+                            <option value="manager">Manager</option>
+                            <option value="hr">HR</option>
+                            <option value="finance">Finance</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                        )}
                       </td>
                       <td className="px-5 py-4">
                         <div className="flex items-center gap-1.5">
@@ -877,7 +948,7 @@ const AdminDashboard = () => {
                                 <div className="overflow-x-auto">
                                   <table className="w-full text-left text-xs border-collapse">
                                     <thead>
-                                      <tr className="text-slate-500 border-b border-white/5 uppercase font-semibold text-[10px] tracking-wider font-semibold">
+                                      <tr className="text-slate-500 border-b border-white/5 uppercase font-semibold text-[10px] tracking-wider">
                                         <th className="pb-2 w-1/3">Project / Client</th>
                                         <th className="pb-2 w-1/2">Activity Description</th>
                                         <th className="pb-2 text-right">Hours Logged</th>
@@ -1092,6 +1163,250 @@ const AdminDashboard = () => {
                 <p className="text-sm font-medium">No notices posted yet.</p>
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Verify Documents Tab */}
+      {activeTab === 'Verify Documents' && (
+        <div className="glass-panel rounded-2xl overflow-hidden border border-white/5 animate-[fadeIn_0.4s_ease-out]">
+          <div className="p-5 border-b border-white/10 flex items-center gap-2">
+            <ShieldCheck className="w-5 h-5 text-violet-400" />
+            <h3 className="font-bold text-white">Document Verification Portal</h3>
+            <span className="ml-auto text-xs px-2.5 py-1 rounded-lg bg-white/5 text-slate-400 font-medium">
+              {documents.length} uploaded docs
+            </span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-950/60 border-b border-white/5 text-xs text-slate-400 font-semibold tracking-wider uppercase">
+                  <th className="px-5 py-4">Employee</th>
+                  <th className="px-5 py-4">Document Title</th>
+                  <th className="px-5 py-4">Uploaded At</th>
+                  <th className="px-5 py-4">File Link</th>
+                  <th className="px-5 py-4">Verification Notes</th>
+                  <th className="px-5 py-4">Status</th>
+                  <th className="px-5 py-4 text-right">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-sm text-slate-300">
+                {documents.length > 0 ? (
+                  documents.map((doc) => (
+                    <tr key={doc._id} className="hover:bg-white/5 transition-colors">
+                      <td className="px-5 py-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center font-bold text-violet-400 text-xs overflow-hidden flex-shrink-0">
+                            {doc.employee?.name?.charAt(0).toUpperCase() || 'U'}
+                          </div>
+                          <div>
+                            <p className="font-semibold text-white text-xs">{doc.employee?.name || 'Unknown'}</p>
+                            <p className="text-[10px] text-slate-500">{doc.employee?.email || 'N/A'}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-5 py-4 font-medium text-white text-xs">{doc.title}</td>
+                      <td className="px-5 py-4 text-xs text-slate-400">{formatDate(doc.uploadedAt)}</td>
+                      <td className="px-5 py-4">
+                        <a
+                          href={`http://localhost:5000${doc.fileUrl}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 font-bold transition-all"
+                        >
+                          View Document &rarr;
+                        </a>
+                      </td>
+                      <td className="px-5 py-4">
+                        {doc.status === 'Pending' ? (
+                          <input
+                            type="text"
+                            placeholder="Add notes..."
+                            value={docNotes[doc._id] || ''}
+                            onChange={(e) => setDocNotes({ ...docNotes, [doc._id]: e.target.value })}
+                            className="bg-slate-950/80 border border-white/10 rounded-xl px-3 py-1.5 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-violet-500 w-full max-w-[200px]"
+                          />
+                        ) : (
+                          <span className="text-xs text-slate-400 italic font-medium">{doc.verificationNotes || 'No notes added'}</span>
+                        )}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusBadge(doc.status)}`}>
+                          {doc.status}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 text-right">
+                        {doc.status === 'Pending' ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleVerifyDocument(doc._id, 'Approved', docNotes[doc._id])}
+                              className="px-3 py-1.5 rounded-lg bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 hover:bg-emerald-500 hover:text-white transition-all text-xs font-bold cursor-pointer"
+                            >
+                              Approve
+                            </button>
+                            <button
+                              onClick={() => handleVerifyDocument(doc._id, 'Rejected', docNotes[doc._id])}
+                              className="px-3 py-1.5 rounded-lg bg-rose-500/10 text-rose-400 border border-rose-500/20 hover:bg-rose-500 hover:text-white transition-all text-xs font-bold cursor-pointer"
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => handleVerifyDocument(doc._id, 'Pending')}
+                            className="text-[10px] font-semibold text-slate-500 hover:text-violet-400 transition-colors cursor-pointer"
+                          >
+                            Reset to Pending
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="7" className="px-5 py-16 text-center text-slate-500">
+                      <ShieldCheck className="w-10 h-10 mx-auto mb-2 text-slate-700" />
+                      <p className="text-sm font-medium">No documents uploaded for verification.</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* System Settings Tab */}
+      {activeTab === 'System Settings' && (
+        <div className="glass-panel rounded-3xl p-6 bg-slate-900/20 border border-white/5 max-w-xl mx-auto space-y-6 animate-[fadeIn_0.4s_ease-out]">
+          <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+            <Activity className="w-5 h-5 text-violet-400" />
+            <h3 className="font-bold text-white">Global HRMS Configurations</h3>
+          </div>
+          <p className="text-slate-400 text-sm leading-relaxed">
+            Adjust system-wide payroll and attendance logging rules. These settings automatically calibrate work shifts and shift-active grace periods.
+          </p>
+
+          <form onSubmit={handleSaveSettings} className="space-y-5">
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  Shift Target Length (Hours)
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  max="24"
+                  value={settings.SHIFT_TARGET_HOURS}
+                  onChange={(e) => setSettings({ ...settings, SHIFT_TARGET_HOURS: Number(e.target.value) })}
+                  className="w-full rounded-xl bg-slate-950/80 border border-white/10 px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500"
+                  required
+                />
+                <span className="text-[10px] text-slate-500 font-semibold mt-1 block">Expected hours required to log a full working day.</span>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-400 mb-2">
+                  Late-Login Grace Period (Minutes)
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="120"
+                  value={settings.GRACE_PERIOD_MINUTES}
+                  onChange={(e) => setSettings({ ...settings, GRACE_PERIOD_MINUTES: Number(e.target.value) })}
+                  className="w-full rounded-xl bg-slate-950/80 border border-white/10 px-4 py-3 text-white text-sm focus:outline-none focus:border-violet-500"
+                  required
+                />
+                <span className="text-[10px] text-slate-500 font-semibold mt-1 block">Allowed delay in minutes before employee check-in is flagged "Late".</span>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={savingSettings}
+              className="w-full flex items-center justify-center gap-2 py-3 rounded-xl bg-violet-600 hover:bg-violet-500 disabled:bg-slate-800 disabled:text-slate-500 font-semibold text-white transition-all duration-300 shadow-lg shadow-violet-600/25 cursor-pointer"
+            >
+              {savingSettings ? (
+                <>
+                  <Loader2 className="w-5 h-5 animate-spin" />
+                  <span>Saving Configuration...</span>
+                </>
+              ) : (
+                <>
+                  <ShieldCheck className="w-5 h-5" />
+                  <span>Save Global Configuration</span>
+                </>
+              )}
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* Audit Logs Tab */}
+      {activeTab === 'Audit Logs' && user?.role === 'admin' && (
+        <div className="glass-panel rounded-2xl p-6 space-y-6 border border-white/5 animate-[fadeIn_0.4s_ease-out]">
+          <div className="flex items-center gap-2 pb-2 border-b border-white/10">
+            <BellRing className="w-5 h-5 text-indigo-400" />
+            <h3 className="font-bold text-white font-sans tracking-tight">System Audit Trail</h3>
+            <span className="ml-auto text-xs px-2.5 py-1 rounded-lg bg-white/5 text-slate-400 font-medium">
+              {auditLogs.length} events
+            </span>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-left border-collapse">
+              <thead>
+                <tr className="bg-slate-950/60 border-b border-white/5 text-xs text-slate-400 font-semibold tracking-wider uppercase">
+                  <th className="px-5 py-4">Timestamp</th>
+                  <th className="px-5 py-4">Actor</th>
+                  <th className="px-5 py-4">Action</th>
+                  <th className="px-5 py-4">Details</th>
+                  <th className="px-5 py-4">IP Address</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-white/5 text-xs text-slate-300">
+                {auditLogs.length > 0 ? (
+                  auditLogs.map((log) => (
+                    <tr key={log._id} className="hover:bg-white/[0.02] transition-colors">
+                      <td className="px-5 py-4 whitespace-nowrap text-slate-400 font-medium">
+                        {new Date(log.timestamp).toLocaleString('en-US', {
+                          month: 'short',
+                          day: 'numeric',
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          second: '2-digit'
+                        })}
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className="text-white font-bold block">{log.actor?.name || 'System'}</span>
+                        <span className="text-[10px] text-slate-500">{log.actor?.email || 'N/A'}</span>
+                      </td>
+                      <td className="px-5 py-4">
+                        <span className={`px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider ${
+                          log.action.includes('DELETE') ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                          log.action.includes('CREATE') ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                          'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                        }`}>
+                          {log.action}
+                        </span>
+                      </td>
+                      <td className="px-5 py-4 max-w-sm truncate text-slate-300" title={log.details}>
+                        {log.details}
+                      </td>
+                      <td className="px-5 py-4 font-mono text-slate-500">{log.ipAddress || '127.0.0.1'}</td>
+                    </tr>
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan="5" className="px-5 py-16 text-center text-slate-500">
+                      <BellRing className="w-10 h-10 mx-auto mb-2 text-slate-700 animate-pulse" />
+                      <p className="text-sm font-medium">No system log records available.</p>
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
           </div>
         </div>
       )}

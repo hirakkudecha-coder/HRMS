@@ -79,6 +79,11 @@ const requireActiveShift = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Not authorized, please log in' });
     }
 
+    // Bypass active shift requirement for admin, hr, and finance roles
+    if (['admin', 'hr', 'finance'].includes(req.user.role)) {
+      return next();
+    }
+
     const Attendance = require('../models/Attendance');
     const timeZone = regionTimeZones[req.user.employeeDetails?.region] || 'Asia/Kolkata';
     const todayStr = getTodayDateString(timeZone);

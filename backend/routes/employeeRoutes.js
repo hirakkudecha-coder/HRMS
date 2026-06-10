@@ -25,7 +25,7 @@ router.put('/profile', updateProfile);
 router.post('/avatar', avatarUploader.single('avatar'), uploadAvatar);
 
 // Route: Get all department employees (GET /api/employee/department) - Private (Manager/Admin)
-router.get('/department', authorize('manager', 'admin', 'hr'), getDepartmentEmployees);
+router.get('/department', authorize('manager', 'admin', 'hr', 'finance'), getDepartmentEmployees);
 
 // Export router
 module.exports = router;

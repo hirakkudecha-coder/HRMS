@@ -22,6 +22,7 @@ import Documents from './pages/Documents';
 import Profile from './pages/Profile';
 import ManagerPortal from './pages/ManagerPortal';
 import AdminDashboard from './pages/AdminDashboard';
+import FinancePortal from './pages/FinancePortal';
 import Home from './pages/Home';
 
 // Layout Wrapper for all protected dashboard views
@@ -31,7 +32,7 @@ const DashboardLayout = ({ children }) => {
   const location = useLocation();
 
   // Determine if the current route should be locked based on check-in state
-  const isLocked = !shiftActive && location.pathname !== '/dashboard' && location.pathname !== '/leaves' && location.pathname !== '/salary';
+  const isLocked = !shiftActive && location.pathname !== '/dashboard' && location.pathname !== '/leaves' && location.pathname !== '/salary' && location.pathname !== '/finance';
 
   return (
     <div className="min-h-screen bg-brand-dark flex">
@@ -181,6 +182,18 @@ const App = () => {
               <ProtectedRoute allowedRoles={['admin', 'hr']}>
                 <DashboardLayout>
                   <AdminDashboard />
+                </DashboardLayout>
+              </ProtectedRoute>
+            }
+          />
+
+          {/* Finance Portal Route */}
+          <Route
+            path="/finance"
+            element={
+              <ProtectedRoute allowedRoles={['finance', 'admin']}>
+                <DashboardLayout>
+                  <FinancePortal />
                 </DashboardLayout>
               </ProtectedRoute>
             }

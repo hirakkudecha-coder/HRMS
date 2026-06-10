@@ -13,7 +13,8 @@ import {
   X,
   Briefcase,
   ShieldCheck,
-  Lock
+  Lock,
+  Landmark
 } from 'lucide-react';
 
 const Sidebar = ({ isOpen, toggleSidebar }) => {
@@ -59,15 +60,20 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
     { name: 'My Profile', path: '/profile', icon: User },
   ];
 
-  // Dynamically inject Manager Portal link if the logged-in user is a manager or admin
+  // Dynamically inject Portal links based on user roles
   const menuItems = [...baseMenuItems];
-  if (user?.role === 'manager' || user?.role === 'admin') {
-    menuItems.splice(1, 0, { name: 'Manager Portal', path: '/manager', icon: Briefcase });
-  }
-  // Inject Admin Panel / HR Portal link for admin and hr roles (at the top, position 0)
+  
   if (user?.role === 'admin' || user?.role === 'hr') {
     const adminLabel = user.role === 'hr' ? 'HR Portal' : 'Admin Panel';
     menuItems.splice(0, 0, { name: adminLabel, path: '/admin', icon: ShieldCheck });
+  }
+  
+  if (user?.role === 'finance' || user?.role === 'admin') {
+    menuItems.splice(0, 0, { name: 'Finance Portal', path: '/finance', icon: Landmark });
+  }
+
+  if (user?.role === 'manager' || user?.role === 'admin') {
+    menuItems.splice(1, 0, { name: 'Manager Portal', path: '/manager', icon: Briefcase });
   }
 
   // Common NavLink styling logic
@@ -147,7 +153,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
         <nav className="flex-1 px-4 space-y-1 overflow-y-auto">
           {menuItems.map((item) => {
             const Icon = item.icon;
-            const isLocked = !shiftActive && item.path !== '/dashboard' && item.path !== '/leaves' && item.path !== '/salary';
+            const isLocked = !shiftActive && item.path !== '/dashboard' && item.path !== '/leaves' && item.path !== '/salary' && item.path !== '/finance';
             return (
               <NavLink
                 key={item.path}
