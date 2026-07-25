@@ -19,7 +19,7 @@ router.post('/', protect, applyLeave); // Apply for leave
 router.get('/', protect, getLeaves);   // Get leaves history & balances
 
 // Department Manager / Admin leave routes
-router.get('/department', protect, authorize('manager', 'admin'), getDepartmentLeaves);
+router.get('/department', protect, getDepartmentLeaves);
 router.put('/:id/status', protect, authorize('manager', 'admin'), updateLeaveStatus);
 
 router.put('/:id/cancel', protect, cancelLeave); // Cancel a leave request

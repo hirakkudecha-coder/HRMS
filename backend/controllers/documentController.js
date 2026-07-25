@@ -112,3 +112,61 @@ exports.deleteDocument = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server error deleting document' });
   }
 };
+
+// @desc    Get all documents (HR/Admin view)
+// @route   GET /api/documents/all
+// @access  Private (HR/Admin only)
+exports.getAllDocuments = async (req, res) => {
+  try {
+    const documents = await Document.find({})
+      .populate('employee', 'name email role employeeDetails')
+      .sort({ uploadedAt: -1 });
+
+    res.status(200).json({
+      success: true,
+      count: documents.length,
+      documents
+    });
+  } catch (error) {
+    console.error('Fetch All Documents Error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error fetching all documents list' });
+  }
+};
+
+// @desc    Verify/Update document status (HR/Admin view)
+// @route   PUT /api/documents/:id/status
+// @access  Private (HR/Admin only)
+exports.verifyDocument = async (req, res) => {
+  try {
+    const { status, verificationNotes } = req.body;
+
+    if (!status || !['Pending', 'Approved', 'Rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status specified' });
+    }
+
+    const document = await Document.findById(req.params.id);
+    if (!document) {
+      return res.status(404).json({ success: false, message: 'Document not found' });
+    }
+
+    document.status = status;
+    if (verificationNotes !== undefined) {
+      document.verificationNotes = verificationNotes.trim();
+    }
+    await document.save();
+
+    const User = require('../models/User');
+    const { logAudit } = require('../utils/logger');
+    const u = await User.findById(document.employee);
+    await logAudit(req.user.id, 'DOCUMENT_VERIFIED', `Updated verification status of document '${document.title}' for ${u?.name || 'unknown'} to '${status}'`, req);
+
+    res.status(200).json({
+      success: true,
+      message: 'Document verification status updated successfully',
+      document
+    });
+  } catch (error) {
+    console.error('Verify Document Error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error during document verification' });
+  }
+};

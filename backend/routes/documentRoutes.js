@@ -6,17 +6,26 @@ const router = express.Router();
 const {
   getDocuments,
   uploadDocument,
-  deleteDocument
+  deleteDocument,
+  getAllDocuments,
+  verifyDocument
 } = require('../controllers/documentController');
 
 // Import Auth protection middleware and Multer document uploader middleware
-const { protect } = require('../middleware/authMiddleware');
+const { protect, authorize, requireActiveShift } = require('../middleware/authMiddleware');
 const { uploadDocument: docUploader } = require('../middleware/uploadMiddleware');
 
-// All document locker routes require authentication
-router.get('/', protect, getDocuments);             // Get uploaded documents list
-router.post('/', protect, docUploader.single('document'), uploadDocument); // Upload a file
-router.delete('/:id', protect, deleteDocument);     // Delete file from server & DB
+// All document locker routes require authentication and an active shift check-in
+router.use(protect);
+router.use(requireActiveShift);
+
+router.get('/', getDocuments);             // Get uploaded documents list
+router.post('/', docUploader.single('document'), uploadDocument); // Upload a file
+router.delete('/:id', deleteDocument);     // Delete file from server & DB
+
+// HR/Admin specific verification routes
+router.get('/all', authorize('admin', 'hr'), getAllDocuments); // Get all uploaded docs globally
+router.put('/:id/status', authorize('admin', 'hr'), verifyDocument); // Verify status of doc
 
 // Export router
 module.exports = router;

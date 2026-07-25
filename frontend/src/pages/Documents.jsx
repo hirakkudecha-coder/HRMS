@@ -25,6 +25,10 @@ const Documents = () => {
         setDocuments(res.data.documents);
       }
     } catch (err) {
+      if (err.response?.status === 403) {
+        // Silently ignore 403 shift lockout error
+        return;
+      }
       console.error('Failed to load documents locker:', err.message);
     } finally {
       setLoading(false);
@@ -267,7 +271,7 @@ const Documents = () => {
                     <div className="flex items-center gap-3.5 mt-4 pt-3 border-t border-white/5">
                       {/* Secure Download Anchor */}
                       <a
-                        href={`http://localhost:5000${doc.fileUrl}`}
+                        href={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${doc.fileUrl}`}
                         target="_blank"
                         rel="noreferrer"
                         download

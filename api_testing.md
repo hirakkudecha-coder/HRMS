@@ -13,7 +13,7 @@ Run this command to authenticate and retrieve your Bearer JWT token:
 ```bash
 curl -X POST http://localhost:5000/api/auth/login \
   -H "Content-Type: application/json" \
-  -d "{\"email\": \"employee@apex.com\", \"password\": \"password123\"}"
+  -d "{\"email\": \"employee@apex.com\", \"password\": \"Password@123\"}"
 ```
 **Expected Response:**
 ```json
@@ -42,7 +42,7 @@ Change your account password by sending the current and new password values:
 curl -X PUT http://localhost:5000/api/auth/password \
   -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -H "Content-Type: application/json" \
-  -d "{\"currentPassword\": \"password123\", \"newPassword\": \"newpassword123\"}"
+  -d "{\"currentPassword\": \"Password@123\", \"newPassword\": \"NewPassword@123\"}"
 ```
 
 ---

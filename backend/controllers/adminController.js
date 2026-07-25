@@ -1,10 +1,13 @@
 // Import required models
 const User = require('../models/User');
 const Leave = require('../models/Leave');
-const Task = require('../models/Task');
+const Timesheet = require('../models/Timesheet');
 const Attendance = require('../models/Attendance');
 const Notice = require('../models/Notice');
 const Salary = require('../models/Salary');
+const Setting = require('../models/Setting');
+const AuditLog = require('../models/AuditLog');
+const { logAudit } = require('../utils/logger');
 
 // Mapping of working regions to standard time zones (mirrors attendanceController)
 const regionTimeZones = {
@@ -34,11 +37,11 @@ exports.getAdminOverview = async (req, res) => {
     const pendingLeaves = await Leave.countDocuments({ status: 'Pending' });
     const approvedLeaves = await Leave.countDocuments({ status: 'Approved' });
 
-    // Task completion stats
-    const totalTasks = await Task.countDocuments();
-    const completedTasks = await Task.countDocuments({ status: 'Completed' });
-    const inProgressTasks = await Task.countDocuments({ status: 'In Progress' });
-    const todoTasks = await Task.countDocuments({ status: 'To Do' });
+    // Timesheet completion stats
+    const totalTimesheets = await Timesheet.countDocuments();
+    const approvedTimesheets = await Timesheet.countDocuments({ status: 'Approved' });
+    const submittedTimesheets = await Timesheet.countDocuments({ status: 'Submitted' });
+    const draftTimesheets = await Timesheet.countDocuments({ status: 'Draft' });
 
     // Today's attendance count — get all employees with their timezone
     const allEmployees = await User.find({ role: { $in: ['employee', 'manager'] } }).select('_id employeeDetails');
@@ -86,10 +89,10 @@ exports.getAdminOverview = async (req, res) => {
         totalManagers,
         pendingLeaves,
         approvedLeaves,
-        totalTasks,
-        completedTasks,
-        inProgressTasks,
-        todoTasks,
+        totalTimesheets,
+        approvedTimesheets,
+        submittedTimesheets,
+        draftTimesheets,
         presentToday,
         checkedOutToday,
         totalWorkforce: totalEmployees + totalManagers
@@ -136,6 +139,9 @@ exports.createEmployee = async (req, res) => {
       }
     });
 
+    // Log the audit event
+    await logAudit(req.user.id, 'EMPLOYEE_CREATE', `Created new employee profile: ${newUser.name} (${newUser.email})`, req);
+
     // Remove password from response
     const userResponse = newUser.toObject();
     delete userResponse.password;
@@ -175,13 +181,16 @@ exports.updateEmployee = async (req, res) => {
 
     // Apply updates
     if (name) user.name = name.trim();
-    if (role && ['employee', 'manager'].includes(role)) user.role = role;
+    if (role && ['employee', 'manager', 'hr', 'finance', 'admin'].includes(role)) user.role = role;
     if (department) user.employeeDetails.department = department;
     if (designation) user.employeeDetails.designation = designation;
     if (phone) user.employeeDetails.phone = phone;
     if (region && ['India', 'USA', 'UK', 'Russia'].includes(region)) user.employeeDetails.region = region;
 
     await user.save();
+
+    // Log the audit event
+    await logAudit(req.user.id, 'EMPLOYEE_UPDATE', `Updated employee profile for: ${user.name} (${user.email})`, req);
 
     if (global.io) {
       global.io.emit('employee_update');
@@ -219,11 +228,14 @@ exports.deleteEmployee = async (req, res) => {
     await Promise.all([
       Attendance.deleteMany({ employee: userId }),
       Leave.deleteMany({ employee: userId }),
-      Task.deleteMany({ employee: userId }),
+      Timesheet.deleteMany({ employee: userId }),
       Salary.deleteMany({ employee: userId }),
     ]);
 
     await User.findByIdAndDelete(userId);
+
+    // Log the audit event
+    await logAudit(req.user.id, 'EMPLOYEE_DELETE', `Deleted employee: ${user.name} (${user.email})`, req);
 
     if (global.io) {
       global.io.emit('employee_update');
@@ -236,5 +248,117 @@ exports.deleteEmployee = async (req, res) => {
   } catch (error) {
     console.error('Delete Employee Error:', error.message);
     res.status(500).json({ success: false, message: 'Server error deleting employee' });
+  }
+};
+
+// @desc    Update employee role (RBAC switcher)
+// @route   PUT /api/admin/employees/:id/role
+// @access  Private (Admin only)
+exports.updateEmployeeRole = async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const { role } = req.body;
+
+    if (!role || !['employee', 'manager', 'hr', 'finance', 'admin'].includes(role)) {
+      return res.status(400).json({ success: false, message: 'Invalid role specified' });
+    }
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'Employee not found' });
+    }
+
+    if (user.id === req.user.id) {
+      return res.status(400).json({ success: false, message: 'You cannot change your own role' });
+    }
+
+    const oldRole = user.role;
+    user.role = role;
+    await user.save();
+
+    await logAudit(req.user.id, 'ROLE_CHANGE', `Changed role of ${user.name} (${user.email}) from '${oldRole}' to '${role}'`, req);
+
+    if (global.io) {
+      global.io.emit('employee_update');
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Role updated to ${role} successfully`,
+      user
+    });
+  } catch (error) {
+    console.error('Update Role Error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error updating role' });
+  }
+};
+
+// @desc    Get all global settings
+// @route   GET /api/admin/settings
+// @access  Private (Admin/HR)
+exports.getSettings = async (req, res) => {
+  try {
+    const settingsList = await Setting.find({});
+    const settingsMap = {};
+    settingsList.forEach(s => {
+      settingsMap[s.key] = s.value;
+    });
+
+    if (settingsMap['SHIFT_TARGET_HOURS'] === undefined) settingsMap['SHIFT_TARGET_HOURS'] = 8;
+    if (settingsMap['GRACE_PERIOD_MINUTES'] === undefined) settingsMap['GRACE_PERIOD_MINUTES'] = 15;
+
+    res.status(200).json({ success: true, settings: settingsMap });
+  } catch (error) {
+    console.error('Get Settings Error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error retrieving settings' });
+  }
+};
+
+// @desc    Update global settings
+// @route   PUT /api/admin/settings
+// @access  Private (Admin only)
+exports.updateSettings = async (req, res) => {
+  try {
+    const { SHIFT_TARGET_HOURS, GRACE_PERIOD_MINUTES } = req.body;
+
+    if (SHIFT_TARGET_HOURS !== undefined) {
+      await Setting.findOneAndUpdate(
+        { key: 'SHIFT_TARGET_HOURS' },
+        { key: 'SHIFT_TARGET_HOURS', value: Number(SHIFT_TARGET_HOURS) },
+        { upsert: true, new: true }
+      );
+    }
+
+    if (GRACE_PERIOD_MINUTES !== undefined) {
+      await Setting.findOneAndUpdate(
+        { key: 'GRACE_PERIOD_MINUTES' },
+        { key: 'GRACE_PERIOD_MINUTES', value: Number(GRACE_PERIOD_MINUTES) },
+        { upsert: true, new: true }
+      );
+    }
+
+    await logAudit(req.user.id, 'SETTINGS_UPDATE', `Updated system configuration settings`, req);
+
+    res.status(200).json({ success: true, message: 'System settings updated successfully' });
+  } catch (error) {
+    console.error('Update Settings Error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error saving settings' });
+  }
+};
+
+// @desc    Get all audit logs
+// @route   GET /api/admin/audit-logs
+// @access  Private (Admin only)
+exports.getAuditLogs = async (req, res) => {
+  try {
+    const logs = await AuditLog.find({})
+      .populate('actor', 'name email role')
+      .sort({ timestamp: -1 })
+      .limit(100);
+
+    res.status(200).json({ success: true, logs });
+  } catch (error) {
+    console.error('Get Audit Logs Error:', error.message);
+    res.status(500).json({ success: false, message: 'Server error retrieving audit logs' });
   }
 };

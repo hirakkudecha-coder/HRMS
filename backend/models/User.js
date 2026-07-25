@@ -21,12 +21,18 @@ const UserSchema = new mongoose.Schema({
   password: {
     type: String,
     required: [true, 'Please add a password'],
-    minlength: 6,
+    minlength: [8, 'Password must be at least 8 characters long'],
+    validate: {
+      validator: function (v) {
+        return /[A-Z]/.test(v) && /[a-z]/.test(v) && /\d/.test(v) && /[@$!%*?&]/.test(v);
+      },
+      message: 'Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character.'
+    },
     select: false // Do not return password by default when querying users
   },
   role: {
     type: String,
-    enum: ['employee', 'manager', 'admin'],
+    enum: ['employee', 'manager', 'hr', 'finance', 'admin'],
     default: 'employee'
   },
   // Details specific to employees

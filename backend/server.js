@@ -13,20 +13,22 @@ const connectDB = require('./config/db');
 const User = require('./models/User');
 const Attendance = require('./models/Attendance');
 const Leave = require('./models/Leave');
-const Task = require('./models/Task');
+const Timesheet = require('./models/Timesheet');
 const Salary = require('./models/Salary');
 const Notice = require('./models/Notice');
+const Holiday = require('./models/Holiday');
 
 // Import MVC Route Files
 const authRoutes = require('./routes/authRoutes');
 const employeeRoutes = require('./routes/employeeRoutes');
 const attendanceRoutes = require('./routes/attendanceRoutes');
 const leaveRoutes = require('./routes/leaveRoutes');
-const taskRoutes = require('./routes/taskRoutes');
+const timesheetRoutes = require('./routes/timesheetRoutes');
 const salaryRoutes = require('./routes/salaryRoutes');
 const documentRoutes = require('./routes/documentRoutes');
 const noticeRoutes = require('./routes/noticeRoutes');
 const adminRoutes = require('./routes/adminRoutes');
+const holidayRoutes = require('./routes/holidayRoutes');
 
 // Initialize the Express Application
 const app = express();
@@ -53,11 +55,12 @@ app.use('/api/auth', authRoutes);
 app.use('/api/employee', employeeRoutes);
 app.use('/api/attendance', attendanceRoutes);
 app.use('/api/leaves', leaveRoutes);
-app.use('/api/tasks', taskRoutes);
+app.use('/api/timesheets', timesheetRoutes);
 app.use('/api/salary', salaryRoutes);
 app.use('/api/documents', documentRoutes);
 app.use('/api/notices', noticeRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/holidays', holidayRoutes);
 
 // Base route for API availability check
 app.get('/', (req, res) => {
@@ -78,8 +81,46 @@ app.use((err, req, res, next) => {
 });
 
 // 5. Automatic Database Seeding Engine
+// Helper function to dynamically calculate details for the last three calendar months
+const getLastThreeMonths = () => {
+  const list = [];
+  const now = new Date();
+  for (let i = 1; i <= 3; i++) {
+    const tempDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    const monthName = tempDate.toLocaleString('en-US', { month: 'long', year: 'numeric' });
+    
+    // Get last day of that specific month
+    const lastDay = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+    
+    list.push({
+      month: monthName,
+      paidDays: lastDay.getDate(),
+      paymentDate: lastDay
+    });
+  }
+  return list;
+};
+
 const seedDemoData = async () => {
   try {
+    // Force a database flush if the seeded salary records months are outdated
+    const expectedMonths = getLastThreeMonths().map(m => m.month);
+    const sampleSalaries = await Salary.find({}).select('month');
+    const existingMonths = sampleSalaries.map(s => s.month);
+    const hasOutdatedSalaries = expectedMonths.some(m => !existingMonths.includes(m));
+    if (sampleSalaries.length > 0 && hasOutdatedSalaries) {
+      console.log('Detected outdated salary records in database. Flushing database collections for dynamic re-seeding...');
+      await Promise.all([
+        User.deleteMany({}),
+        Attendance.deleteMany({}),
+        Leave.deleteMany({}),
+        Timesheet.deleteMany({}),
+        Salary.deleteMany({}),
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
+      ]);
+    }
+
     // Force a database flush if the demo employee has the old region (India) or is missing, to ensure region is USA and password is reset
     const demoEmployee = await User.findOne({ email: 'employee@apex.com' });
     if (!demoEmployee || demoEmployee.employeeDetails?.region !== 'USA') {
@@ -88,9 +129,25 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
-        Notice.deleteMany({})
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
+      ]);
+    }
+
+    // Force a database flush if the Admin details are not configured, to apply backdated joiningDate
+    const adminUser = await User.findOne({ email: 'admin@apex.com' });
+    if (!adminUser || adminUser.employeeDetails?.employeeId !== 'ADM0001') {
+      console.log('Detected missing or unconfigured Admin account. Resetting database to apply Admin details...');
+      await Promise.all([
+        User.deleteMany({}),
+        Attendance.deleteMany({}),
+        Leave.deleteMany({}),
+        Timesheet.deleteMany({}),
+        Salary.deleteMany({}),
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
       ]);
     }
 
@@ -108,9 +165,10 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
-        Notice.deleteMany({})
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
       ]);
     }
 
@@ -122,9 +180,10 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
-        Notice.deleteMany({})
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
       ]);
     }
 
@@ -141,9 +200,10 @@ const seedDemoData = async () => {
         User.deleteMany({}),
         Attendance.deleteMany({}),
         Leave.deleteMany({}),
-        Task.deleteMany({}),
+        Timesheet.deleteMany({}),
         Salary.deleteMany({}),
-        Notice.deleteMany({})
+        Notice.deleteMany({}),
+        Holiday.deleteMany({})
       ]);
     }
 
@@ -170,10 +230,201 @@ const seedDemoData = async () => {
       console.log('- Demo Notices Seeded');
     }
 
-    // Check if the User collection has records
-    const userCount = await User.countDocuments();
-    if (userCount > 0) {
-      console.log('Database already initialized. Skipping auto-seeding.');
+    // Check if Holiday collection is empty or has outdated holidays (wrong calendar year)
+    const currentYear = new Date().getFullYear();
+    const sampleHoliday = await Holiday.findOne({});
+    if (sampleHoliday && new Date(sampleHoliday.date).getFullYear() !== currentYear) {
+      console.log('Detected outdated holidays. Flushing holiday records for current year re-seeding...');
+      await Holiday.deleteMany({});
+    }
+
+    const holidayCount = await Holiday.countDocuments({});
+    if (holidayCount === 0) {
+      console.log('No holidays found. Seeding dynamic Indian festivals & public holidays for the year...');
+      await Holiday.create([
+        { name: "New Year's Day", date: new Date(currentYear, 0, 1), description: 'Celebration of the new calendar year' },
+        { name: 'Republic Day', date: new Date(currentYear, 0, 26), description: 'Anniversary of the Constitution of India' },
+        { name: 'Holi Festival', date: new Date(currentYear, 2, 3), description: 'Festival of colors, marking the arrival of spring' },
+        { name: 'Good Friday', date: new Date(currentYear, 3, 2), description: 'Christian holiday commemorating crucifixion' },
+        { name: 'Ambedkar Jayanti', date: new Date(currentYear, 3, 14), description: 'Birthday of Dr. B. R. Ambedkar' },
+        { name: 'May Day (Labor Day)', date: new Date(currentYear, 4, 1), description: 'Celebration of the international labor movement' },
+        { name: 'Eid-ul-Fitr', date: new Date(currentYear, 5, 2), description: 'Islamic festival marking the end of Ramadan' },
+        { name: 'Independence Day', date: new Date(currentYear, 7, 15), description: 'Anniversary of independence from British rule' },
+        { name: 'Janmashtami', date: new Date(currentYear, 8, 4), description: 'Hindu festival celebrating the birth of Lord Krishna' },
+        { name: 'Gandhi Jayanti', date: new Date(currentYear, 9, 2), description: 'Birthday of Mahatma Gandhi' },
+        { name: 'Maha Navami / Dussehra', date: new Date(currentYear, 9, 19), description: 'Hindu festival victory of good over evil' },
+        { name: 'Vijayadashami', date: new Date(currentYear, 9, 20), description: 'Hindu festival celebrating the end of Navratri' },
+        { name: 'Diwali / Deepavali', date: new Date(currentYear, 10, 9), description: 'Festival of lights' },
+        { name: 'Govardhan Puja', date: new Date(currentYear, 10, 10), description: 'Hindu festival honoring Lord Krishna' },
+        { name: 'Christmas Day', date: new Date(currentYear, 11, 25), description: 'Celebration of the birth of Jesus Christ' }
+      ]);
+      console.log('- Demo Indian & Public Holidays Seeded');
+    }
+
+    // Ensure Demo HR and Demo Finance accounts exist (handles incremental seeding on update)
+    const hrExists = await User.findOne({ email: 'hr@apex.com' });
+    if (!hrExists) {
+      console.log('Demo HR account missing. Seeding hr@apex.com...');
+      await User.create({
+        name: 'Sarah Jenkins',
+        email: 'hr@apex.com',
+        password: 'Password@123',
+        role: 'hr',
+        employeeDetails: {
+          employeeId: 'EMP8844',
+          department: 'Human Resources',
+          designation: 'HR Generalist',
+          phone: '+91 98765-11111',
+          skills: ['Onboarding', 'Conflict Resolution', 'Employee Engagement', 'HR Policies'],
+          region: 'India',
+          joiningDate: new Date('2024-02-01')
+        }
+      });
+    }
+
+    const financeExists = await User.findOne({ email: 'finance@apex.com' });
+    if (!financeExists) {
+      console.log('Demo Finance account missing. Seeding finance@apex.com...');
+      await User.create({
+        name: 'David Vance',
+        email: 'finance@apex.com',
+        password: 'Password@123',
+        role: 'finance',
+        employeeDetails: {
+          employeeId: 'EMP8845',
+          department: 'Finance',
+          designation: 'Payroll Specialist',
+          phone: '+91 98765-22222',
+          skills: ['Payroll Management', 'Taxation', 'TDS', 'Financial Auditing'],
+          region: 'India',
+          joiningDate: new Date('2024-03-01')
+        }
+      });
+    }
+
+    // Helper to seed compliant salaries for all 6 users
+    const seedCompliantSalaries = async () => {
+      const dynamicMonths = getLastThreeMonths();
+      const salaryConfig = [
+        {
+          email: 'manager@apex.com',
+          gross: 150000,
+          basic: 75000,
+          hra: 37500,
+          education: 2000,
+          nps: 7500,
+          lunch: 3000,
+          lta: 5000,
+          shift: 5000,
+          special: 15000
+        },
+        {
+          email: 'admin@apex.com',
+          gross: 120000,
+          basic: 60000,
+          hra: 30000,
+          education: 2000,
+          nps: 6000,
+          lunch: 3000,
+          lta: 4000,
+          shift: 4000,
+          special: 11000
+        },
+        {
+          email: 'employee@apex.com',
+          gross: 100000,
+          basic: 50000,
+          hra: 25000,
+          education: 2000,
+          nps: 5000,
+          lunch: 2000,
+          lta: 3000,
+          shift: 3000,
+          special: 10000
+        },
+        {
+          email: 'amit@apex.com',
+          gross: 80000,
+          basic: 40000,
+          hra: 20000,
+          education: 1000,
+          nps: 4000,
+          lunch: 2000,
+          lta: 2500,
+          shift: 2000,
+          special: 8500
+        },
+        {
+          email: 'finance@apex.com',
+          gross: 60000,
+          basic: 30000,
+          hra: 15000,
+          education: 1000,
+          nps: 3000,
+          lunch: 1500,
+          lta: 2000,
+          shift: 1500,
+          special: 6000
+        },
+        {
+          email: 'hr@apex.com',
+          gross: 50000,
+          basic: 25000,
+          hra: 12500,
+          education: 1000,
+          nps: 2500,
+          lunch: 1500,
+          lta: 2000,
+          shift: 1500,
+          special: 4000
+        }
+      ];
+
+      for (const config of salaryConfig) {
+        const user = await User.findOne({ email: config.email });
+        if (user) {
+          // Delete any existing salary records for this user to ensure fresh compliant data
+          await Salary.deleteMany({ employee: user._id });
+          
+          // Create 3 compliant salary records
+          const records = dynamicMonths.map(m => {
+            const pfVal = Math.round(config.basic * 0.12);
+            const ptVal = 200;
+            const grossDeductionsVal = pfVal + ptVal;
+            const netSalaryVal = config.gross - grossDeductionsVal;
+            
+            return {
+              employee: user._id,
+              month: m.month,
+              basicSalary: config.basic,
+              hra: config.hra,
+              educationAllowance: config.education,
+              npsAdhocPay: config.nps,
+              lunchAllowance: config.lunch,
+              monthlyLTA: config.lta,
+              shiftAllowance: config.shift,
+              adhocAllowance: config.special,
+              grossEarnings: config.gross,
+              pf: pfVal,
+              professionalTax: ptVal,
+              grossDeductions: grossDeductionsVal,
+              netSalary: netSalaryVal,
+              paidDays: m.paidDays,
+              paymentStatus: 'Paid',
+              paymentDate: m.paymentDate
+            };
+          });
+          await Salary.insertMany(records);
+          console.log(`- Seeded compliant salaries for ${config.email}`);
+        }
+      }
+    };
+
+    // Check if the primary Admin account exists to determine if we skip main seeding
+    const adminExistsAfter = await User.findOne({ email: 'admin@apex.com' });
+    if (adminExistsAfter) {
+      console.log('Database already initialized. Re-seeding compliant salaries and skipping full auto-seeding.');
+      await seedCompliantSalaries();
       return;
     }
 
@@ -183,8 +434,15 @@ const seedDemoData = async () => {
     const admin = await User.create({
       name: 'Manager Admin',
       email: 'admin@apex.com',
-      password: 'password123', // Will be hashed automatically by pre-save hook
-      role: 'admin'
+      password: 'Password@123', // Will be hashed automatically by pre-save hook
+      role: 'admin',
+      employeeDetails: {
+        employeeId: 'ADM0001',
+        department: 'Administration',
+        designation: 'System Administrator',
+        region: 'USA',
+        joiningDate: new Date('2023-01-15')
+      }
     });
     console.log('- Demo Administrator Seeded: admin@apex.com');
 
@@ -192,7 +450,7 @@ const seedDemoData = async () => {
     const manager = await User.create({
       name: 'Richard Roe',
       email: 'manager@apex.com',
-      password: 'password123',
+      password: 'Password@123',
       role: 'manager',
       employeeDetails: {
         employeeId: 'MGR5521',
@@ -210,7 +468,7 @@ const seedDemoData = async () => {
     const employee = await User.create({
       name: 'Jane Doe',
       email: 'employee@apex.com',
-      password: 'password123',
+      password: 'Password@123',
       role: 'employee',
       employeeDetails: {
         employeeId: 'EMP8842',
@@ -228,7 +486,7 @@ const seedDemoData = async () => {
     const employeeIndia = await User.create({
       name: 'Amit Patel',
       email: 'amit@apex.com',
-      password: 'password123',
+      password: 'Password@123',
       role: 'employee',
       employeeDetails: {
         employeeId: 'EMP8843',
@@ -241,6 +499,42 @@ const seedDemoData = async () => {
       }
     });
     console.log('- Demo India Employee Seeded: amit@apex.com');
+
+    // 5.2.3. Create Demo HR (HR Generalist)
+    const hr = await User.create({
+      name: 'Sarah Jenkins',
+      email: 'hr@apex.com',
+      password: 'Password@123',
+      role: 'hr',
+      employeeDetails: {
+        employeeId: 'EMP8844',
+        department: 'Human Resources',
+        designation: 'HR Generalist',
+        phone: '+91 98765-11111',
+        skills: ['Onboarding', 'Conflict Resolution', 'Employee Engagement', 'HR Policies'],
+        region: 'India',
+        joiningDate: new Date('2024-02-01')
+      }
+    });
+    console.log('- Demo HR Seeded: hr@apex.com');
+
+    // 5.2.4. Create Demo Finance (Payroll Specialist)
+    const finance = await User.create({
+      name: 'David Vance',
+      email: 'finance@apex.com',
+      password: 'Password@123',
+      role: 'finance',
+      employeeDetails: {
+        employeeId: 'EMP8845',
+        department: 'Finance',
+        designation: 'Payroll Specialist',
+        phone: '+91 98765-22222',
+        skills: ['Payroll Management', 'Taxation', 'TDS', 'Financial Auditing'],
+        region: 'India',
+        joiningDate: new Date('2024-03-01')
+      }
+    });
+    console.log('- Demo Finance Seeded: finance@apex.com');
 
     // 5.3. Seed Attendance History (Past 5 days for the Demo Employee)
     const attendanceRecords = [
@@ -378,329 +672,60 @@ const seedDemoData = async () => {
     await Leave.insertMany(leaveRecordsIndia);
     console.log('- Demo India Employee Leave History Seeded');
 
-    // 5.5. Seed Task Assignments
-    const taskRecords = [
-      {
-        employee: employee._id,
-        title: 'Refactor Authentication Layout',
-        description: 'Update the styling of the login cards to match the new dark glassmorphic layout standard.',
-        priority: 'High',
-        status: 'Completed',
-        deadline: new Date('2026-05-25')
-      },
-      {
-        employee: employee._id,
-        title: 'Integrate Dynamic Payslip Generator',
-        description: 'Connect the frontend salary details slip page to the new backend PDFKit stream download endpoint.',
-        priority: 'High',
-        status: 'In Progress',
-        deadline: new Date('2026-05-30')
-      },
-      {
-        employee: employee._id,
-        title: 'Write Jest API Route Tests',
-        description: 'Implement unit testing suites for user auth logins, checking file upload exceptions, and token protections.',
-        priority: 'Medium',
-        status: 'To Do',
-        deadline: new Date('2026-06-08')
-      }
-    ];
-    await Task.insertMany(taskRecords);
-    console.log('- Demo Tasks Seeded');
+    // 5.5. Seed Timesheet Assignments
+    const getLocalDateString = (offsetDays = 0) => {
+      const d = new Date();
+      d.setDate(d.getDate() + offsetDays);
+      const year = d.getFullYear();
+      const month = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    };
+    const todayStr = getLocalDateString(0);
+    const yesterdayStr = getLocalDateString(-1);
 
-    // Seed Task Assignments for India Employee (Amit Patel)
-    const taskRecordsIndia = [
-      {
-        employee: employeeIndia._id,
-        title: 'Implement Spring Boot Security',
-        description: 'Secure all microservices communication channels using OAuth2 and JWT authorizations.',
-        priority: 'High',
-        status: 'Completed',
-        deadline: new Date('2026-05-24')
-      },
-      {
-        employee: employeeIndia._id,
-        title: 'Optimize Database Query Indexes',
-        description: 'Improve search response speed for historical employee attendance lists by analyzing profiling indexes.',
-        priority: 'High',
-        status: 'In Progress',
-        deadline: new Date('2026-05-29')
-      },
-      {
-        employee: employeeIndia._id,
-        title: 'Write API documentation Swagger specs',
-        description: 'Generate complete API structure specifications inside Swagger / OpenAPI for partner integrations.',
-        priority: 'Low',
-        status: 'To Do',
-        deadline: new Date('2026-06-12')
-      }
-    ];
-    await Task.insertMany(taskRecordsIndia);
-    console.log('- Demo India Employee Tasks Seeded');
-
-    // 5.6. Seed Salary Records (Past 3 months of payslips in INR with all Pay Heads)
-    const salaryRecords = [
+    const timesheetRecords = [
       {
         employee: employee._id,
-        month: 'February 2026',
-        basicSalary: 60000,
-        hra: 30000,
-        adhocAllowance: 36000,
-        educationAllowance: 2000,
-        npsAdhocPay: 6000,
-        lunchAllowance: 3000,
-        monthlyLTA: 8000,
-        shiftAllowance: 5000,
-        grossEarnings: 150000,
-        pf: 7200,
-        professionalTax: 200,
-        grossDeductions: 7400,
-        netSalary: 142600,
-        paidDays: 28,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-02-28')
-      },
-      {
-        employee: employee._id,
-        month: 'March 2026',
-        basicSalary: 60000,
-        hra: 30000,
-        adhocAllowance: 36000,
-        educationAllowance: 2000,
-        npsAdhocPay: 6000,
-        lunchAllowance: 3000,
-        monthlyLTA: 8000,
-        shiftAllowance: 5000,
-        grossEarnings: 150000,
-        pf: 7200,
-        professionalTax: 200,
-        grossDeductions: 7400,
-        netSalary: 142600,
-        paidDays: 31,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-03-31')
-      },
-      {
-        employee: employee._id,
-        month: 'April 2026',
-        basicSalary: 60000,
-        hra: 30000,
-        adhocAllowance: 36000,
-        educationAllowance: 2000,
-        npsAdhocPay: 6000,
-        lunchAllowance: 3000,
-        monthlyLTA: 8000,
-        shiftAllowance: 5000,
-        grossEarnings: 150000,
-        pf: 7200,
-        professionalTax: 200,
-        grossDeductions: 7400,
-        netSalary: 142600,
-        paidDays: 30,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-04-30')
-      }
-    ];
-    await Salary.insertMany(salaryRecords);
-    console.log('- Demo Salary Slip History Seeded');
-
-    // Seed Salary Records for the India Employee (Amit Patel)
-    const salaryRecordsIndia = [
-      {
-        employee: employeeIndia._id,
-        month: 'February 2026',
-        basicSalary: 40000,
-        hra: 20000,
-        adhocAllowance: 20000,
-        educationAllowance: 2000,
-        npsAdhocPay: 4000,
-        lunchAllowance: 2000,
-        monthlyLTA: 5000,
-        shiftAllowance: 2000,
-        grossEarnings: 95000,
-        pf: 4800,
-        professionalTax: 200,
-        grossDeductions: 5000,
-        netSalary: 90000,
-        paidDays: 28,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-02-28')
+        date: yesterdayStr,
+        entries: [
+          {
+            project: 'React Dashboard UI',
+            description: 'Refactored employee authentication and dashboard layouts with glassmorphic cards.',
+            hours: 8
+          }
+        ],
+        status: 'Approved'
       },
       {
         employee: employeeIndia._id,
-        month: 'March 2026',
-        basicSalary: 40000,
-        hra: 20000,
-        adhocAllowance: 20000,
-        educationAllowance: 2000,
-        npsAdhocPay: 4000,
-        lunchAllowance: 2000,
-        monthlyLTA: 5000,
-        shiftAllowance: 2000,
-        grossEarnings: 95000,
-        pf: 4800,
-        professionalTax: 200,
-        grossDeductions: 5000,
-        netSalary: 90000,
-        paidDays: 31,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-03-31')
+        date: yesterdayStr,
+        entries: [
+          {
+            project: 'Microservices Security',
+            description: 'Implemented Spring Boot microservices OAuth2 and JWT authorization layers.',
+            hours: 8
+          }
+        ],
+        status: 'Approved'
       },
       {
         employee: employeeIndia._id,
-        month: 'April 2026',
-        basicSalary: 40000,
-        hra: 20000,
-        adhocAllowance: 20000,
-        educationAllowance: 2000,
-        npsAdhocPay: 4000,
-        lunchAllowance: 2000,
-        monthlyLTA: 5000,
-        shiftAllowance: 2000,
-        grossEarnings: 95000,
-        pf: 4800,
-        professionalTax: 200,
-        grossDeductions: 5000,
-        netSalary: 90000,
-        paidDays: 30,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-04-30')
+        date: todayStr,
+        entries: [
+          {
+            project: 'Database Optimization',
+            description: 'Indexed MongoDB database collection properties for attendance record queries.',
+            hours: 4
+          }
+        ],
+        status: 'Draft'
       }
     ];
-    await Salary.insertMany(salaryRecordsIndia);
-    console.log('- Demo India Employee Salary Slip History Seeded');
+    await Timesheet.insertMany(timesheetRecords);
+    console.log('- Demo Timesheets Seeded');
 
-    // Seed salary records for the Manager (Richard Roe)
-    const managerSalaryRecords = [
-      {
-        employee: manager._id,
-        month: 'February 2026',
-        basicSalary: 100000,
-        hra: 50000,
-        adhocAllowance: 40000,
-        educationAllowance: 5000,
-        npsAdhocPay: 10000,
-        lunchAllowance: 5000,
-        monthlyLTA: 10000,
-        shiftAllowance: 0,
-        grossEarnings: 220000,
-        pf: 12000,
-        professionalTax: 200,
-        grossDeductions: 12200,
-        netSalary: 207800,
-        paidDays: 28,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-02-28')
-      },
-      {
-        employee: manager._id,
-        month: 'March 2026',
-        basicSalary: 100000,
-        hra: 50000,
-        adhocAllowance: 40000,
-        educationAllowance: 5000,
-        npsAdhocPay: 10000,
-        lunchAllowance: 5000,
-        monthlyLTA: 10000,
-        shiftAllowance: 0,
-        grossEarnings: 220000,
-        pf: 12000,
-        professionalTax: 200,
-        grossDeductions: 12200,
-        netSalary: 207800,
-        paidDays: 31,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-03-31')
-      },
-      {
-        employee: manager._id,
-        month: 'April 2026',
-        basicSalary: 100000,
-        hra: 50000,
-        adhocAllowance: 40000,
-        educationAllowance: 5000,
-        npsAdhocPay: 10000,
-        lunchAllowance: 5000,
-        monthlyLTA: 10000,
-        shiftAllowance: 0,
-        grossEarnings: 220000,
-        pf: 12000,
-        professionalTax: 200,
-        grossDeductions: 12200,
-        netSalary: 207800,
-        paidDays: 30,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-04-30')
-      }
-    ];
-    await Salary.insertMany(managerSalaryRecords);
-    console.log('- Demo Manager Salary Slip History Seeded');
-
-    // Seed salary records for the Admin (Manager Admin)
-    const adminSalaryRecords = [
-      {
-        employee: admin._id,
-        month: 'February 2026',
-        basicSalary: 120000,
-        hra: 60000,
-        adhocAllowance: 50000,
-        educationAllowance: 8000,
-        npsAdhocPay: 15000,
-        lunchAllowance: 8000,
-        monthlyLTA: 15000,
-        shiftAllowance: 0,
-        grossEarnings: 276000,
-        pf: 14400,
-        professionalTax: 200,
-        grossDeductions: 14600,
-        netSalary: 261400,
-        paidDays: 28,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-02-28')
-      },
-      {
-        employee: admin._id,
-        month: 'March 2026',
-        basicSalary: 120000,
-        hra: 60000,
-        adhocAllowance: 50000,
-        educationAllowance: 8000,
-        npsAdhocPay: 15000,
-        lunchAllowance: 8000,
-        monthlyLTA: 15000,
-        shiftAllowance: 0,
-        grossEarnings: 276000,
-        pf: 14400,
-        professionalTax: 200,
-        grossDeductions: 14600,
-        netSalary: 261400,
-        paidDays: 31,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-03-31')
-      },
-      {
-        employee: admin._id,
-        month: 'April 2026',
-        basicSalary: 120000,
-        hra: 60000,
-        adhocAllowance: 50000,
-        educationAllowance: 8000,
-        npsAdhocPay: 15000,
-        lunchAllowance: 8000,
-        monthlyLTA: 15000,
-        shiftAllowance: 0,
-        grossEarnings: 276000,
-        pf: 14400,
-        professionalTax: 200,
-        grossDeductions: 14600,
-        netSalary: 261400,
-        paidDays: 30,
-        paymentStatus: 'Paid',
-        paymentDate: new Date('2026-04-30')
-      }
-    ];
-    await Salary.insertMany(adminSalaryRecords);
-    console.log('- Demo Admin Salary Slip History Seeded');
+    await seedCompliantSalaries();
 
     console.log('Database auto-seeding successfully completed! App is ready.');
   } catch (err) {
@@ -716,7 +741,7 @@ const PORT = process.env.PORT || 5000;
 const server = http.createServer(app);
 const io = new Server(server, {
   cors: {
-    origin: "http://localhost:5173",
+    origin: process.env.FRONTEND_URL || "*",
     methods: ["GET", "POST", "PUT", "DELETE"]
   }
 });

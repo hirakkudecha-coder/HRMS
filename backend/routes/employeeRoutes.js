@@ -10,18 +10,22 @@ const {
 } = require('../controllers/employeeController');
 
 // Import Auth protection middleware and Multer image upload middleware
-const { protect, authorize } = require('../middleware/authMiddleware');
+const { protect, authorize, requireActiveShift } = require('../middleware/authMiddleware');
 const { uploadAvatar: avatarUploader } = require('../middleware/uploadMiddleware');
 
-// Route: Update profile contact/skills (PUT /api/employee/profile) - Protected
-router.put('/profile', protect, updateProfile);
+// All employee routes require authentication and an active shift check-in
+router.use(protect);
+router.use(requireActiveShift);
 
-// Route: Upload profile image (POST /api/employee/avatar) - Protected
+// Route: Update profile contact/skills (PUT /api/employee/profile)
+router.put('/profile', updateProfile);
+
+// Route: Upload profile image (POST /api/employee/avatar)
 // Intercept with Multer's single-file uploader expecting fieldname 'avatar'
-router.post('/avatar', protect, avatarUploader.single('avatar'), uploadAvatar);
+router.post('/avatar', avatarUploader.single('avatar'), uploadAvatar);
 
 // Route: Get all department employees (GET /api/employee/department) - Private (Manager/Admin)
-router.get('/department', protect, authorize('manager', 'admin'), getDepartmentEmployees);
+router.get('/department', authorize('manager', 'admin', 'hr', 'finance'), getDepartmentEmployees);
 
 // Export router
 module.exports = router;

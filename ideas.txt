@@ -1,0 +1,30 @@
+1. Employee Dashboard (Dashboard.jsx)
+Live Worked Hours Timeline: Instead of just a total hours ticker, implement a visual timeline showing check-in times, break logs (start/end of breaks), and active shift progression.
+
+Personal Work Performance Charts: Add a clean bar or line chart (using a library like Recharts) displaying daily worked hours over the past 30 days to help employees track their shift averages and overtime.
+
+Quick Payroll Widget: Add a quick-download card for the most recent month’s PDF payslip so employees can retrieve their payslips with a single click without navigating away from the dashboard.
+
+Notice Board Filters & "Mark as Read": Provide category filters (e.g., IT announcements vs. HR bulletins) and allow employees to dismiss or mark notifications as read to declutter their bulletin feed.
+
+Department Leave Calendar: A calendar showing upcoming holidays and personal scheduled leaves so they can plan ahead.
+
+2. Manager Dashboard (ManagerPortal.jsx)
+Department Leave Calendar View: Implement a monthly calendar grid showing department-wide leaves. This helps managers easily identify resource availability conflicts before approving new requests.
+
+Team Burnout & Hours Analytics: Provide a dashboard view listing team members sorted by average worked hours. This makes it easy to spot overworking/burnout (e.g., average hours > 9.5) or low participation.
+
+Kanban Board for Task Delegation: Instead of a simple checklist table, use a dynamic drag-and-drop Kanban board (To Do, In Progress, Review, Completed) to manage team workloads interactively.
+Shift Exception Alerts: Send real-time warnings to managers if an employee forgets to check out (shift exceeds 12 hours) or is absent without an approved leave request.
+
+Exportable Reports: Add options to download team attendance sheets and task completion data as Excel/CSV spreadsheets.
+3. Admin Dashboard (AdminDashboard.jsx)
+Interactive Payroll Manager: Add a dedicated payroll control panel to configure standard HRA/PF percentages, calculate/review bulk monthly payouts, and mark payslips as "Paid" or "Pending".
+
+System Audit Logs: Create an audit trail tab displaying system events (e.g., which manager approved a leave request, when a user's details were edited, or when a new notice was posted) for security and accountability.
+
+Bulk Import/Export: Provide a bulk employee creation utility via CSV uploads, and bulk export capabilities for system-wide attendance, leave, and salary databases.
+
+Targeted Notice Broadcasts: Enable admins to target announcements to specific departments (e.g., Engineering only) or regions (e.g., India office only) instead of broadcasting system-wide.
+
+System-wide Growth Metrics: Render interactive charts summarizing workforce growth over time, department size breakdowns, and monthly system-wide leave statistics.

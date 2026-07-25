@@ -13,6 +13,29 @@ export const AuthProvider = ({ children }) => {
   // State to track if session check is happening on startup
   const [loading, setLoading] = useState(true);
 
+  // State to track if the employee has checked in for their daily shift today
+  const [shiftActive, setShiftActive] = useState(false);
+
+  // Helper to query check-in status and refresh active shift state
+  const refreshShiftStatus = async () => {
+    const token = localStorage.getItem('token');
+    if (!token) {
+      setShiftActive(false);
+      return;
+    }
+    try {
+      const res = await api.get('/attendance/today');
+      if (res.data.success && res.data.checkedIn) {
+        setShiftActive(true);
+      } else {
+        setShiftActive(false);
+      }
+    } catch (err) {
+      console.error('Failed to query daily check-in status:', err.message);
+      setShiftActive(false);
+    }
+  };
+
   // Hook to restore session on app launch
   useEffect(() => {
     const checkUserLoggedIn = async () => {
@@ -29,6 +52,13 @@ export const AuthProvider = ({ children }) => {
         const res = await api.get('/auth/me');
         if (res.data.success) {
           setUser(res.data.user);
+          // Check if employee is checked in for today
+          const attRes = await api.get('/attendance/today');
+          if (attRes.data.success && attRes.data.checkedIn) {
+            setShiftActive(true);
+          } else {
+            setShiftActive(false);
+          }
         } else {
           // If session is expired, clean up token
           localStorage.removeItem('token');
@@ -53,8 +83,22 @@ export const AuthProvider = ({ children }) => {
       if (res.data.success) {
         // Store JWT token in localStorage
         localStorage.setItem('token', res.data.token);
-        // Set user state
+        
+        // Check check-in status first before triggering session route transitions
+        let checkedIn = false;
+        try {
+          const attRes = await api.get('/attendance/today');
+          if (attRes.data.success && attRes.data.checkedIn) {
+            checkedIn = true;
+          }
+        } catch (attErr) {
+          console.error('Failed to query daily check-in status during login:', attErr.message);
+        }
+
+        // Set both states to transition layout routes cleanly
+        setShiftActive(checkedIn);
         setUser(res.data.user);
+        
         return { success: true };
       }
     } catch (err) {
@@ -70,6 +114,7 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     // Clear user state
     setUser(null);
+    setShiftActive(false);
   };
 
   // Function to change password
@@ -127,6 +172,8 @@ export const AuthProvider = ({ children }) => {
       value={{
         user,
         loading,
+        shiftActive,
+        refreshShiftStatus,
         login,
         logout,
         changePassword,

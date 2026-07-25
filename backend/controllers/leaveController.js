@@ -139,25 +139,15 @@ exports.cancelLeave = async (req, res) => {
   }
 };
 
-// @desc    Get all leave applications of employees in manager's department (or all for admin)
+// @desc    Get all leave applications of employees in user's department (or all for admin)
 // @route   GET /api/leaves/department
-// @access  Private (Manager/Admin)
+// @access  Private
 exports.getDepartmentLeaves = async (req, res) => {
   try {
-    const isAdmin = req.user.role === 'admin';
-    const department = req.user.employeeDetails?.department;
-
-    if (!isAdmin && !department) {
-      return res.status(400).json({ success: false, message: 'Manager department not found' });
-    }
-
-    // Build employee query: admins see all, managers see their department
+    // Return all leaves company-wide for any employee/manager/admin
     const empQuery = {};
-    if (!isAdmin && department) {
-      empQuery['employeeDetails.department'] = department;
-    }
 
-    // Find relevant employees
+    // Find all employees
     const employees = await User.find(empQuery).select('_id');
     const employeeIds = employees.map(emp => emp._id);
 

@@ -24,6 +24,15 @@ const DocumentSchema = new mongoose.Schema({
   uploadedAt: {
     type: Date,
     default: Date.now
+  },
+  status: {
+    type: String,
+    enum: ['Pending', 'Approved', 'Rejected'],
+    default: 'Pending'
+  },
+  verificationNotes: {
+    type: String,
+    default: ''
   }
 }, {
   timestamps: true // Automatically create 'createdAt' and 'updatedAt'
