@@ -87,7 +87,7 @@ const ManagerPortal = () => {
 
   // Setup real-time Socket.io listeners to refresh data dynamically on live updates
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000');
 
     socket.on('connect', () => {
       console.log('Connected to real-time notification socket');
@@ -464,7 +464,7 @@ const ManagerPortal = () => {
                       <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden text-lg">
                         {emp.employeeDetails?.profileImage ? (
                           <img
-                            src={`http://localhost:5000${emp.employeeDetails.profileImage}`}
+                            src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${emp.employeeDetails.profileImage}`}
                             alt={emp.name}
                             className="w-full h-full object-cover"
                             onError={(e) => { e.target.style.display = 'none'; }}
@@ -521,7 +521,7 @@ const ManagerPortal = () => {
                           <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden">
                             {emp.employeeDetails?.profileImage ? (
                               <img
-                                src={`http://localhost:5000${emp.employeeDetails.profileImage}`}
+                                src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${emp.employeeDetails.profileImage}`}
                                 alt={emp.name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => { e.target.style.display = 'none'; }}
@@ -627,7 +627,7 @@ const ManagerPortal = () => {
                         <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden">
                           {leave.employee?.employeeDetails?.profileImage ? (
                             <img
-                              src={`http://localhost:5000${leave.employee.employeeDetails.profileImage}`}
+                              src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${leave.employee.employeeDetails.profileImage}`}
                               alt={leave.employee?.name}
                               className="w-full h-full object-cover"
                               onError={(e) => { e.target.style.display = 'none'; }}
@@ -731,7 +731,7 @@ const ManagerPortal = () => {
                             <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden">
                               {ts.employee?.employeeDetails?.profileImage ? (
                                 <img
-                                  src={`http://localhost:5000${ts.employee.employeeDetails.profileImage}`}
+                                  src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${ts.employee.employeeDetails.profileImage}`}
                                   alt={ts.employee?.name}
                                   className="w-full h-full object-cover"
                                   onError={(e) => { e.target.style.display = 'none'; }}
@@ -879,7 +879,7 @@ const ManagerPortal = () => {
                           <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden">
                             {rec.employee?.employeeDetails?.profileImage ? (
                               <img
-                                src={`http://localhost:5000${rec.employee.employeeDetails.profileImage}`}
+                                src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${rec.employee.employeeDetails.profileImage}`}
                                 alt={rec.employee?.name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => { e.target.style.display = 'none'; }}
@@ -954,7 +954,7 @@ const ManagerPortal = () => {
                           <div className="w-7 h-7 rounded-lg bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden text-xs">
                             {rec.employee?.employeeDetails?.profileImage ? (
                               <img
-                                src={`http://localhost:5000${rec.employee.employeeDetails.profileImage}`}
+                                src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${rec.employee.employeeDetails.profileImage}`}
                                 alt={rec.employee?.name}
                                 className="w-full h-full object-cover"
                                 onError={(e) => { e.target.style.display = 'none'; }}

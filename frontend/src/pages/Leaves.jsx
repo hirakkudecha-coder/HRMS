@@ -73,7 +73,7 @@ const Leaves = () => {
 
   // Setup real-time Socket.io listeners to refresh leave lists and accrual balances
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000');
 
     socket.on('connect', () => {
       console.log('Leaves page connected to real-time notification socket');

@@ -133,7 +133,7 @@ const Dashboard = () => {
 
   // Setup real-time Socket.io listeners to refresh dashboard data dynamically
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000');
 
     socket.on('connect', () => {
       console.log('Dashboard connected to real-time notification socket');

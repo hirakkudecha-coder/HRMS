@@ -125,7 +125,7 @@ const Timesheets = () => {
 
   // Real-time updates via Socket.io
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000');
     socket.on('timesheet_update', () => {
       fetchDailyTimesheet(selectedDate);
       fetchTimesheetHistory();

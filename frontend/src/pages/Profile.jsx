@@ -170,7 +170,7 @@ const Profile = () => {
             <div className="relative w-28 h-28 rounded-full bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-3xl text-brand-accent overflow-hidden shadow-xl shadow-black/40">
               {user?.employeeDetails?.profileImage ? (
                 <img
-                  src={`http://localhost:5000${user.employeeDetails.profileImage}`}
+                  src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${user.employeeDetails.profileImage}`}
                   alt="Avatar"
                   className="w-full h-full object-cover"
                   onError={(e) => { e.target.style.display = 'none'; }}

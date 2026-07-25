@@ -134,7 +134,7 @@ const Sidebar = ({ isOpen, toggleSidebar }) => {
           <div className="w-10 h-10 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-brand-accent overflow-hidden flex-shrink-0">
             {user?.employeeDetails?.profileImage ? (
               <img
-                src={`http://localhost:5000${user.employeeDetails.profileImage}`}
+                src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${user.employeeDetails.profileImage}`}
                 alt="Profile"
                 className="w-full h-full object-cover"
                 onError={(e) => { e.target.style.display = 'none'; }}

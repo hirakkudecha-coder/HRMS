@@ -131,7 +131,7 @@ const AdminDashboard = () => {
 
   // ── Socket Real-time ──────────────────────────────────────────────
   useEffect(() => {
-    const socket = io('http://localhost:5000');
+    const socket = io(import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000');
     socket.on('leave_update', fetchAll);
     socket.on('timesheet_update', fetchAll);
     socket.on('attendance_update', fetchAll);
@@ -660,7 +660,7 @@ const AdminDashboard = () => {
                         <div className="flex items-center gap-3">
                           <div className="w-9 h-9 rounded-xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-bold text-indigo-400 flex-shrink-0 overflow-hidden">
                             {emp.employeeDetails?.profileImage ? (
-                              <img src={`http://localhost:5000${emp.employeeDetails.profileImage}`} alt="" className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
+                              <img src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${emp.employeeDetails.profileImage}`} alt="" className="w-full h-full object-cover" onError={e => e.target.style.display = 'none'} />
                             ) : emp.name?.charAt(0).toUpperCase()}
                           </div>
                           <div>
@@ -872,7 +872,7 @@ const AdminDashboard = () => {
                             <div className="w-8 h-8 rounded-xl bg-violet-500/10 border border-violet-500/20 flex items-center justify-center font-bold text-violet-400 overflow-hidden text-xs">
                               {ts.employee?.employeeDetails?.profileImage ? (
                                 <img
-                                  src={`http://localhost:5000${ts.employee.employeeDetails.profileImage}`}
+                                  src={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${ts.employee.employeeDetails.profileImage}`}
                                   alt={ts.employee?.name}
                                   className="w-full h-full object-cover"
                                   onError={(e) => { e.target.style.display = 'none'; }}
@@ -1209,7 +1209,7 @@ const AdminDashboard = () => {
                       <td className="px-5 py-4 text-xs text-slate-400">{formatDate(doc.uploadedAt)}</td>
                       <td className="px-5 py-4">
                         <a
-                          href={`http://localhost:5000${doc.fileUrl}`}
+                          href={`${import.meta.env.VITE_BACKEND_URL || 'http://localhost:5000'}${doc.fileUrl}`}
                           target="_blank"
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-xs text-violet-400 hover:text-violet-300 font-bold transition-all"
