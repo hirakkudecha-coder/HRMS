@@ -500,41 +500,7 @@ const seedDemoData = async () => {
     });
     console.log('- Demo India Employee Seeded: amit@apex.com');
 
-    // 5.2.3. Create Demo HR (HR Generalist)
-    const hr = await User.create({
-      name: 'Sarah Jenkins',
-      email: 'hr@apex.com',
-      password: 'Password@123',
-      role: 'hr',
-      employeeDetails: {
-        employeeId: 'EMP8844',
-        department: 'Human Resources',
-        designation: 'HR Generalist',
-        phone: '+91 98765-11111',
-        skills: ['Onboarding', 'Conflict Resolution', 'Employee Engagement', 'HR Policies'],
-        region: 'India',
-        joiningDate: new Date('2024-02-01')
-      }
-    });
-    console.log('- Demo HR Seeded: hr@apex.com');
-
-    // 5.2.4. Create Demo Finance (Payroll Specialist)
-    const finance = await User.create({
-      name: 'David Vance',
-      email: 'finance@apex.com',
-      password: 'Password@123',
-      role: 'finance',
-      employeeDetails: {
-        employeeId: 'EMP8845',
-        department: 'Finance',
-        designation: 'Payroll Specialist',
-        phone: '+91 98765-22222',
-        skills: ['Payroll Management', 'Taxation', 'TDS', 'Financial Auditing'],
-        region: 'India',
-        joiningDate: new Date('2024-03-01')
-      }
-    });
-    console.log('- Demo Finance Seeded: finance@apex.com');
+    // 5.2.3. HR and Finance are already seeded earlier in the script.
 
     // 5.3. Seed Attendance History (Past 5 days for the Demo Employee)
     const attendanceRecords = [
