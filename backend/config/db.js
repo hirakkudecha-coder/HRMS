@@ -8,8 +8,11 @@ dns.setDefaultResultOrder('ipv4first');
 // Function to connect to the MongoDB database
 const connectDB = async () => {
   try {
+    const uri = process.env.MONGO_URI || 'mongodb://localhost:27017/hrms';
+    console.log(`Attempting connection to: ${uri.replace(/:([^@]+)@/, ':****@')}`);
+    
     // Try to connect using the URI from environment variables
-    const conn = await mongoose.connect(process.env.MONGO_URI || 'mongodb://localhost:27017/hrms');
+    const conn = await mongoose.connect(uri);
     
     // Log a success message with the host name
     console.log(`MongoDB Connected: ${conn.connection.host}`);
